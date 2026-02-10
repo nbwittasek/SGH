@@ -530,3 +530,271 @@ def get_max_path_id(model: ParsedModel) -> int:
     if not model.airflow_paths:
         return 0
     return max(p.id for p in model.airflow_paths)
+
+
+# ---------------------------------------------------------------------------
+# Auto-detection / suggestions engine
+# ---------------------------------------------------------------------------
+
+def _detect_stair_zone_groups(model: ParsedModel) -> List[dict]:
+    """Detect stair zone groups by finding zone names that repeat across levels.
+
+    Looks for zone names containing common stair keywords, excluding
+    vestibule zones (e.g., ST1_v, S4_V, Stair2V).
+    Returns list of dicts: {name, zones: [{zone_id, level_num, level_name}]}
+    """
+    import re
+
+    # Match stair zones but NOT vestibule patterns
+    stair_keywords = re.compile(
+        r"(?i)(stair|stwr|egress|exit[_\-]?stair)", re.IGNORECASE
+    )
+    # Exclude vestibule patterns: ends with _v, _V, _vest, or contains vest/lobby
+    vestibule_exclude = re.compile(
+        r"(?i)([_\-]v$|vest|_v\b|_v/|^st\d*[_\-]?v$)", re.IGNORECASE
+    )
+
+    # Group zones by name
+    name_groups: dict[str, List[Zone]] = {}
+    for z in model.zones:
+        if stair_keywords.search(z.name) and not vestibule_exclude.search(z.name):
+            name_groups.setdefault(z.name, []).append(z)
+
+    # A stair must span at least 2 levels to be a real stair
+    results = []
+    for name, zones in sorted(name_groups.items()):
+        if len(zones) >= 2:
+            results.append({
+                "name": name,
+                "zones": [
+                    {"zone_id": z.id, "level_num": z.level_num, "level_name": z.level_name}
+                    for z in sorted(zones, key=lambda zz: zz.level_num)
+                ],
+            })
+    return results
+
+
+def _detect_corridor_zone_groups(model: ParsedModel) -> List[dict]:
+    """Detect corridor zone groups by finding zone names with corridor keywords."""
+    import re
+
+    corr_keywords = re.compile(
+        r"(?i)(corridor|corr|hallway|lobby)", re.IGNORECASE
+    )
+
+    name_groups: dict[str, List[Zone]] = {}
+    for z in model.zones:
+        if corr_keywords.search(z.name):
+            name_groups.setdefault(z.name, []).append(z)
+
+    results = []
+    for name, zones in sorted(name_groups.items()):
+        if len(zones) >= 2:
+            results.append({
+                "name": name,
+                "zones": [
+                    {"zone_id": z.id, "level_num": z.level_num, "level_name": z.level_name}
+                    for z in sorted(zones, key=lambda zz: zz.level_num)
+                ],
+            })
+    return results
+
+
+def _detect_path_elements_for_stair(
+    model: ParsedModel, stair_name: str
+) -> dict:
+    """Try to match flow element names to a stair.
+
+    Looks for naming patterns like:
+        Door-Stair1-S2V, Door-Stair1-V2C, Door-Stair1-EXT
+        Door-Stair2S2V2, Door-Stair2V2C2
+    """
+    import re
+
+    # Normalize stair name: "Stair_1" -> "Stair1", "Stair2" -> "Stair2"
+    # Try multiple normalization variants
+    clean = stair_name.replace("_", "").replace("-", "").replace(" ", "")
+    variants = [clean, stair_name, stair_name.replace("_", "")]
+
+    result = {"s2v": "", "v2c": "", "ext": "", "s2v2": "", "v2c2": ""}
+
+    path_patterns = {
+        "s2v": re.compile(r"(?i)s2v(?!2)"),
+        "v2c": re.compile(r"(?i)v2c(?!2)"),
+        "ext": re.compile(r"(?i)(ext|exterior)"),
+        "s2v2": re.compile(r"(?i)s2v2"),
+        "v2c2": re.compile(r"(?i)v2c2"),
+    }
+
+    for elem in model.flow_elements:
+        elem_clean = elem.name.replace("_", "").replace("-", "").replace(" ", "")
+        # Check if this element name contains the stair name
+        matches_stair = any(v.lower() in elem_clean.lower() for v in variants)
+        if not matches_stair:
+            continue
+
+        for path_key, pattern in path_patterns.items():
+            if pattern.search(elem.name) and not result[path_key]:
+                result[path_key] = elem.name
+
+    return result
+
+
+def _detect_corridor_path_element(model: ParsedModel) -> str:
+    """Detect the corridor floor leakage flow element.
+
+    Looks for element names containing FLR, LK, Measured, floor, leak, etc.
+    """
+    import re
+
+    patterns = [
+        re.compile(r"(?i)flr.*lk.*measur"),
+        re.compile(r"(?i)floor.*leak.*measur"),
+        re.compile(r"(?i)flr.*measur"),
+        re.compile(r"(?i)corr.*leak"),
+        re.compile(r"(?i)floor.*leak"),
+    ]
+
+    for elem in model.flow_elements:
+        for pat in patterns:
+            if pat.search(elem.name):
+                return elem.name
+    return ""
+
+
+def _detect_supply_ahs(model: ParsedModel) -> Optional[AHSystem]:
+    """Detect the supply AHS (for stair pressurization)."""
+    for ahs in model.ahs_systems:
+        if "supply" in ahs.name.lower() or "press" in ahs.name.lower():
+            return ahs
+    # Fallback: return AHS with highest ID (commonly the supply)
+    if model.ahs_systems:
+        return max(model.ahs_systems, key=lambda a: a.id)
+    return None
+
+
+def _detect_return_ahs(model: ParsedModel) -> Optional[AHSystem]:
+    """Detect the return/exhaust AHS (for corridor depressurization)."""
+    for ahs in model.ahs_systems:
+        if "return" in ahs.name.lower() or "exhaust" in ahs.name.lower():
+            return ahs
+    # Fallback: return AHS with lowest ID
+    if model.ahs_systems:
+        return min(model.ahs_systems, key=lambda a: a.id)
+    return None
+
+
+def _detect_roof_level_for_stair(
+    stair_zones: List[dict], model: ParsedModel
+) -> dict:
+    """Find the topmost level where a stair exists for roof depressurization."""
+    if not stair_zones:
+        return {}
+    # The last zone in the list (sorted by level_num) is the topmost
+    top = stair_zones[-1]
+    return {
+        "zone_id": top["zone_id"],
+        "level_num": top["level_num"],
+        "level_name": top["level_name"],
+    }
+
+
+def _detect_weather_from_model(model: ParsedModel) -> dict:
+    """Extract current weather settings from the model."""
+    from .units import kelvin_to_f, ms_to_mph
+
+    if model.weather_line_num < 0 or model.weather_line_num >= len(model.raw_lines):
+        return {"temp_f": 70.0, "wind_mph": 0.0, "wind_dir": 270.0}
+
+    parts = model.raw_lines[model.weather_line_num].split()
+    if len(parts) < 4:
+        return {"temp_f": 70.0, "wind_mph": 0.0, "wind_dir": 270.0}
+
+    try:
+        temp_k = float(parts[0])
+        wind_ms = float(parts[2])
+        wind_dir = float(parts[3])
+        return {
+            "temp_f": round(kelvin_to_f(temp_k), 1),
+            "wind_mph": round(ms_to_mph(wind_ms), 1),
+            "wind_dir": round(wind_dir, 0),
+        }
+    except (ValueError, IndexError):
+        return {"temp_f": 70.0, "wind_mph": 0.0, "wind_dir": 270.0}
+
+
+def auto_detect_config(model: ParsedModel) -> dict:
+    """Analyze a parsed model and generate suggested configuration.
+
+    Returns a dict with:
+        stairs: [{label, zone_name, zones: [{zone_id, level_num}], paths: {s2v,v2c,ext,...}}]
+        corridors: [{label, zone_name, zones: [{zone_id, level_num}], path_name}]
+        supply_ahs: {id, name} or null
+        return_ahs: {id, name} or null
+        roof_configs: [{stair_label, zone_id, level_num, level_name}]
+        weather: {temp_f, wind_mph, wind_dir}
+        confidence: str ("high", "medium", "low")
+    """
+    stair_groups = _detect_stair_zone_groups(model)
+    corridor_groups = _detect_corridor_zone_groups(model)
+    supply_ahs = _detect_supply_ahs(model)
+    return_ahs = _detect_return_ahs(model)
+    corr_path = _detect_corridor_path_element(model)
+    weather = _detect_weather_from_model(model)
+
+    # Build stair suggestions
+    stairs = []
+    for sg in stair_groups:
+        paths = _detect_path_elements_for_stair(model, sg["name"])
+        roof = _detect_roof_level_for_stair(sg["zones"], model)
+        stairs.append({
+            "label": sg["name"],
+            "zone_name": sg["name"],
+            "zones": sg["zones"],
+            "paths": paths,
+            "roof": roof,
+        })
+
+    # Build corridor suggestions
+    corridors = []
+    for i, cg in enumerate(corridor_groups):
+        corridors.append({
+            "label": f"Corridor_{i + 1}",
+            "zone_name": cg["name"],
+            "zones": cg["zones"],
+            "path_name": corr_path,
+        })
+
+    # Roof configs
+    roof_configs = []
+    for stair in stairs:
+        if stair["roof"]:
+            roof_configs.append({
+                "stair_label": stair["label"],
+                **stair["roof"],
+            })
+
+    # Confidence scoring
+    has_stairs = len(stairs) > 0
+    has_corridors = len(corridors) > 0
+    has_ahs = supply_ahs is not None
+    has_paths = any(s["paths"]["s2v"] for s in stairs)
+    score = sum([has_stairs, has_corridors, has_ahs, has_paths])
+    confidence = "high" if score >= 3 else "medium" if score >= 2 else "low"
+
+    return {
+        "stairs": stairs,
+        "corridors": corridors,
+        "supply_ahs": {"id": supply_ahs.id, "name": supply_ahs.name} if supply_ahs else None,
+        "return_ahs": {"id": return_ahs.id, "name": return_ahs.name} if return_ahs else None,
+        "corridor_path_element": corr_path,
+        "roof_configs": roof_configs,
+        "weather": weather,
+        "confidence": confidence,
+        "summary": {
+            "stairs_detected": len(stairs),
+            "corridors_detected": len(corridors),
+            "stair_names": [s["label"] for s in stairs],
+            "corridor_names": [c["zone_name"] for c in corridors],
+        },
+    }

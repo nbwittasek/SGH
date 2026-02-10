@@ -15,6 +15,7 @@ const App = (() => {
     let browserCurrentPath = '';
     let scenarios = [];
     let eventSource = null;
+    let lastSuggestions = null;
 
     // ---------------------------------------------------------------------------
     // Tab Navigation
@@ -138,6 +139,12 @@ const App = (() => {
             // Load all data
             await Promise.all([loadLevels(), loadZones(), loadAHS(), loadElements(), loadPaths()]);
             populateDropdowns();
+
+            // Fetch auto-suggestions
+            try {
+                lastSuggestions = await api('GET', `/api/model/${currentModelId}/suggestions`);
+                showSuggestionsBanner(lastSuggestions);
+            } catch (e) { /* suggestions are optional */ }
         } catch (e) {
             showStatus('parse-status', 'Parse failed: ' + e.message, 'error');
         }
@@ -541,6 +548,150 @@ const App = (() => {
         modelData.elements.forEach(e => {
             corrSel.innerHTML += `<option value="${e.name}">${e.name}</option>`;
         });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Auto-Suggestions
+    // ---------------------------------------------------------------------------
+    function showSuggestionsBanner(suggestions) {
+        // Remove existing banner if any
+        const existing = document.getElementById('suggestions-banner');
+        if (existing) existing.remove();
+
+        if (!suggestions || suggestions.confidence === 'low' && suggestions.summary.stairs_detected === 0) return;
+
+        const s = suggestions.summary;
+        const banner = document.createElement('div');
+        banner.id = 'suggestions-banner';
+        banner.className = 'info-box';
+        banner.style.marginTop = '1rem';
+        banner.style.borderColor = suggestions.confidence === 'high' ? 'rgba(39,174,96,0.4)' : 'rgba(243,156,18,0.4)';
+        banner.style.background = suggestions.confidence === 'high' ? 'rgba(39,174,96,0.08)' : 'rgba(243,156,18,0.08)';
+
+        const stairList = s.stair_names.length ? s.stair_names.join(', ') : 'none found';
+        const corrList = s.corridor_names.length ? s.corridor_names.join(', ') : 'none found';
+        const ahsInfo = suggestions.supply_ahs ? `Supply: ${suggestions.supply_ahs.name}` : 'not detected';
+        const confLabel = suggestions.confidence === 'high' ? 'High confidence' : suggestions.confidence === 'medium' ? 'Medium confidence' : 'Low confidence';
+
+        banner.innerHTML = `
+            <h3>Auto-Detected Configuration (${confLabel})</h3>
+            <p><strong>Stairs (${s.stairs_detected}):</strong> ${stairList}</p>
+            <p><strong>Corridors (${s.corridors_detected}):</strong> ${corrList}</p>
+            <p><strong>AHS:</strong> ${ahsInfo}</p>
+            ${suggestions.corridor_path_element ? `<p><strong>Corridor Path:</strong> ${suggestions.corridor_path_element}</p>` : ''}
+            <div class="btn-row" style="margin-top:0.75rem;">
+                <button class="btn btn-primary" onclick="App.applySuggestions()">Apply Suggestions to All Tabs</button>
+                <button class="btn" onclick="document.getElementById('suggestions-banner').remove()">Dismiss</button>
+            </div>
+        `;
+
+        const parsedData = document.getElementById('parsed-data');
+        parsedData.parentElement.insertBefore(banner, parsedData);
+    }
+
+    function applySuggestions() {
+        if (!lastSuggestions) return;
+        const sg = lastSuggestions;
+
+        // 1. Set number of stairs and labels
+        const numStairs = sg.stairs.length || 1;
+        document.getElementById('num-stairs').value = numStairs;
+
+        // Build stair labels first (updateStairTabs needs them)
+        updateStairTabs(); // creates label inputs
+
+        // Set stair labels
+        for (let i = 0; i < sg.stairs.length; i++) {
+            const labelEl = document.getElementById(`stair-label-${i}`);
+            if (labelEl) labelEl.value = sg.stairs[i].label;
+        }
+
+        // Rebuild tabs with correct labels
+        updateStairTabs();
+
+        // 2. Set number of corridors
+        const numCorr = sg.corridors.length || 1;
+        document.getElementById('num-corridors').value = numCorr;
+        updateCorridorTabs();
+
+        // 3. Populate stair zone selections and AHS
+        for (let i = 0; i < sg.stairs.length; i++) {
+            const stair = sg.stairs[i];
+            const supplyAhsId = sg.supply_ahs ? sg.supply_ahs.id : 0;
+
+            for (const zoneInfo of stair.zones) {
+                // Set zone dropdown
+                const zoneSel = document.getElementById(`stair-${i}-zone-${zoneInfo.level_num}`);
+                if (zoneSel) zoneSel.value = zoneInfo.zone_id;
+
+                // Set AHS to supply
+                const ahsSel = document.getElementById(`stair-${i}-ahs-${zoneInfo.level_num}`);
+                if (ahsSel) ahsSel.value = supplyAhsId;
+            }
+        }
+        updateSupplyZones();
+
+        // 4. Populate corridor zone selections and AHS
+        for (let i = 0; i < sg.corridors.length; i++) {
+            const corr = sg.corridors[i];
+            const returnAhsId = sg.return_ahs ? sg.return_ahs.id : 0;
+
+            for (const zoneInfo of corr.zones) {
+                const zoneSel = document.getElementById(`corr-${i}-zone-${zoneInfo.level_num}`);
+                if (zoneSel) zoneSel.value = zoneInfo.zone_id;
+
+                const ahsSel = document.getElementById(`corr-${i}-ahs-${zoneInfo.level_num}`);
+                if (ahsSel) ahsSel.value = returnAhsId;
+            }
+        }
+
+        // 5. Populate roof table and path selection
+        updateRoofTable();
+        updatePathSelection();
+
+        // Set roof configs
+        for (let i = 0; i < sg.roof_configs.length && i < sg.stairs.length; i++) {
+            const roof = sg.roof_configs[i];
+            const returnAhsId = sg.return_ahs ? sg.return_ahs.id : 0;
+
+            const zoneSel = document.getElementById(`roof-zone-${i}`);
+            if (zoneSel) zoneSel.value = roof.zone_id;
+
+            const levelSel = document.getElementById(`roof-level-${i}`);
+            if (levelSel) levelSel.value = roof.level_num;
+
+            const ahsSel = document.getElementById(`roof-ahs-${i}`);
+            if (ahsSel) ahsSel.value = returnAhsId;
+        }
+
+        // 6. Set path element selections
+        for (let i = 0; i < sg.stairs.length; i++) {
+            const paths = sg.stairs[i].paths;
+            for (const [key, elemName] of Object.entries(paths)) {
+                if (!elemName) continue;
+                const sel = document.getElementById(`path-${key}-${i}`);
+                if (sel) sel.value = elemName;
+            }
+        }
+
+        // 7. Set corridor path element
+        if (sg.corridor_path_element) {
+            const corrPathSel = document.getElementById('corridor-path-name');
+            if (corrPathSel) corrPathSel.value = sg.corridor_path_element;
+        }
+
+        // 8. Show confirmation and switch to pressurization tab
+        const banner = document.getElementById('suggestions-banner');
+        if (banner) {
+            banner.innerHTML = `
+                <h3 style="color:var(--success);">Suggestions Applied</h3>
+                <p>Stairs, corridors, AHS, roof configs, and path elements have been pre-filled.
+                   Review and adjust values in Tab 3 (Pressurization Config), then set flow rates (SCFM) for each level.</p>
+                <p><strong>Remaining steps:</strong> Set flow rates for each stair/corridor level, configure scenarios in Tab 4, then run.</p>
+            `;
+            banner.style.borderColor = 'rgba(39,174,96,0.4)';
+            banner.style.background = 'rgba(39,174,96,0.08)';
+        }
     }
 
     function togglePanel(header) {
@@ -982,6 +1133,7 @@ const App = (() => {
         updateCorridorTabs,
         autoPopulateStair,
         autoPopulateCorridor,
+        applySuggestions,
         togglePanel,
         addScenario: () => addScenario(),
         addStandardSet,

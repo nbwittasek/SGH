@@ -31,6 +31,7 @@ from core.analysis_engine import (
 from core.contam_runner import find_contam_executable
 from core.prj_parser import (
     ParsedModel,
+    auto_detect_config,
     get_zone_display_name,
     parse_prj_file,
 )
@@ -347,6 +348,15 @@ async def get_ahs(model_id: str):
         }
         for ahs in model.ahs_systems
     ]
+
+
+@app.get("/api/model/{model_id}/suggestions")
+async def get_suggestions(model_id: str):
+    """Auto-detect configuration from the parsed model."""
+    model = parsed_models.get(model_id)
+    if not model:
+        raise HTTPException(404, "Model not found")
+    return auto_detect_config(model)
 
 
 # ---------------------------------------------------------------------------
