@@ -109,7 +109,18 @@ def set_weather(lines: List[str], temp_f: float, wind_mph: float, wind_dir: floa
         return
 
     data_line = idx + 1
-    parts = lines[data_line].split()
+    raw = lines[data_line]
+
+    # Separate data from trailing comment (e.g., "! steady simulation")
+    comment_idx = raw.find("!")
+    if comment_idx >= 0:
+        data_str = raw[:comment_idx]
+        comment = " " + raw[comment_idx:].rstrip("\n")
+    else:
+        data_str = raw
+        comment = ""
+
+    parts = data_str.split()
     if len(parts) < 5:
         return
 
@@ -118,15 +129,7 @@ def set_weather(lines: List[str], temp_f: float, wind_mph: float, wind_dir: floa
     parts[2] = f"{mph_to_ms(wind_mph):.3f}"
     parts[3] = f"{wind_dir:.1f}"
 
-    # Preserve trailing comment
-    comment_idx = lines[data_line].find("!")
-    comment = ""
-    if comment_idx >= 0:
-        comment = " " + lines[data_line][comment_idx:]
-    else:
-        comment = "\n"
-
-    lines[data_line] = " ".join(parts[:len(parts)]) + (comment if comment.endswith("\n") else comment + "\n")
+    lines[data_line] = " ".join(parts) + comment + "\n"
 
 
 # ---------------------------------------------------------------------------
