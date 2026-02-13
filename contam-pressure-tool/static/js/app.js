@@ -410,9 +410,11 @@ const App = (() => {
             if (!selectedName) return;
         }
 
-        // Find matching zones on each level
+        // Find matching zones on each level (case-insensitive)
+        const nameLower = selectedName.toLowerCase();
         modelData.levels.forEach(lvl => {
-            const match = allZones.find(z => z.name === selectedName && z.level_num === lvl.index);
+            const match = allZones.find(z => z.name.toLowerCase() === nameLower && z.level_num === lvl.index)
+                       || allZones.find(z => z.name === selectedName && z.level_num === lvl.index);
             if (match) {
                 const sel = document.getElementById(`stair-${stairIdx}-zone-${lvl.index}`);
                 if (sel) sel.value = match.id;
@@ -482,8 +484,10 @@ const App = (() => {
             selectedName = prompt('Enter corridor zone name (e.g., "Corridor"):');
             if (!selectedName) return;
         }
+        const nameLower = selectedName.toLowerCase();
         modelData.levels.forEach(lvl => {
-            const match = allZones.find(z => z.name === selectedName && z.level_num === lvl.index);
+            const match = allZones.find(z => z.name.toLowerCase() === nameLower && z.level_num === lvl.index)
+                       || allZones.find(z => z.name === selectedName && z.level_num === lvl.index);
             if (match) {
                 const sel = document.getElementById(`corr-${corrIdx}-zone-${lvl.index}`);
                 if (sel) sel.value = match.id;
@@ -596,13 +600,18 @@ const App = (() => {
         const details = (config.detection_details || []).map(d => `<li>${d}</li>`).join('');
         const confLabel = config.confidence === 'high' ? 'High' : config.confidence === 'medium' ? 'Medium' : 'Low';
 
+        const vestCount = s.vestibules_detected || 0;
+        const corrPath = config.corridor_path_element ? `<li>Corridor path element: ${config.corridor_path_element}</li>` : '';
+
         banner.innerHTML = `
             <h3 style="color:var(--success); margin-bottom:0.5rem;">Auto-Configured from PRJ File (${confLabel} Confidence)</h3>
             <p>The model has been automatically analyzed and the following has been pre-filled:</p>
             <ul style="margin:0.5rem 0; padding-left:1.5rem; font-size:0.85rem;">
                 ${details}
-                ${config.supply_ahs ? `<li>Supply AHS: ${config.supply_ahs.name} (#${config.supply_ahs.id})</li>` : ''}
-                ${config.return_ahs ? `<li>Return AHS: ${config.return_ahs.name} (#${config.return_ahs.id})</li>` : ''}
+                ${vestCount > 0 ? `<li>Vestibule zones detected: ${vestCount} (linked to stairs via S2V paths)</li>` : ''}
+                ${config.supply_ahs ? `<li>Supply AHS: ${config.supply_ahs.name} (#${config.supply_ahs.id})</li>` : '<li>Supply AHS: not detected (set manually if needed)</li>'}
+                ${config.return_ahs ? `<li>Return AHS: ${config.return_ahs.name} (#${config.return_ahs.id})</li>` : '<li>Return AHS: not detected (set manually if needed)</li>'}
+                ${corrPath}
             </ul>
             <p style="margin-top:0.75rem;"><strong>Next steps:</strong> Review the configuration below, set flow rates (SCFM) for each level, then proceed to Tab 4 (Scenarios) and Tab 5 (Run).</p>
             <div class="btn-row" style="margin-top:0.5rem;">
@@ -653,9 +662,37 @@ const App = (() => {
         parsedData.parentElement.insertBefore(banner, parsedData);
     }
 
+    function setSelectByZone(selectEl, zoneInfo) {
+        // Try setting by zone_id first
+        if (zoneInfo.zone_id) {
+            selectEl.value = String(zoneInfo.zone_id);
+            if (selectEl.value === String(zoneInfo.zone_id)) return true;
+        }
+        // Fallback: match by zone name in option text
+        if (zoneInfo.zone_name) {
+            for (const opt of selectEl.options) {
+                if (opt.text.startsWith(zoneInfo.zone_name + ' ')) {
+                    selectEl.value = opt.value;
+                    return true;
+                }
+            }
+            // Looser match: case-insensitive name contained in option text
+            const nameLower = zoneInfo.zone_name.toLowerCase();
+            for (const opt of selectEl.options) {
+                const optName = opt.text.split(' (Zone')[0].toLowerCase();
+                if (optName === nameLower) {
+                    selectEl.value = opt.value;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     function applySuggestions() {
         if (!lastSuggestions) return;
         const sg = lastSuggestions;
+        console.log('[AutoConfig] Applying suggestions:', sg.summary);
 
         // 1. Set number of stairs and labels
         const numStairs = sg.stairs.length || 1;
@@ -679,60 +716,53 @@ const App = (() => {
         updateCorridorTabs();
 
         // 3. Populate stair zone selections and AHS
+        let stairZonesSet = 0, stairZonesMissed = 0;
         for (let i = 0; i < sg.stairs.length; i++) {
             const stair = sg.stairs[i];
-            // Use per-stair AHS if detected, otherwise fall back to global supply AHS
             const stairAhsId = stair.ahs_id || (sg.supply_ahs ? sg.supply_ahs.id : 0);
 
             for (const zoneInfo of stair.zones) {
-                // Set zone dropdown — use zone_name matching as fallback
-                // since zone names may vary across levels (e.g. Stair_4 vs Stair4)
                 const zoneSel = document.getElementById(`stair-${i}-zone-${zoneInfo.level_num}`);
                 if (zoneSel) {
-                    zoneSel.value = zoneInfo.zone_id;
-                    // Verify it was set (zone_id might not be in this level's dropdown)
-                    if (zoneSel.value != zoneInfo.zone_id && zoneInfo.zone_name) {
-                        // Try to find by name match in the dropdown options
-                        for (const opt of zoneSel.options) {
-                            if (opt.text.startsWith(zoneInfo.zone_name + ' ')) {
-                                zoneSel.value = opt.value;
-                                break;
-                            }
-                        }
+                    if (setSelectByZone(zoneSel, zoneInfo)) {
+                        stairZonesSet++;
+                    } else {
+                        stairZonesMissed++;
+                        console.warn(`[AutoConfig] Could not set stair ${stair.label} zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
                     }
+                } else {
+                    console.warn(`[AutoConfig] No select found: stair-${i}-zone-${zoneInfo.level_num}`);
                 }
 
-                // Set AHS
                 const ahsSel = document.getElementById(`stair-${i}-ahs-${zoneInfo.level_num}`);
-                if (ahsSel) ahsSel.value = stairAhsId;
+                if (ahsSel && stairAhsId) ahsSel.value = stairAhsId;
             }
         }
+        console.log(`[AutoConfig] Stair zones set: ${stairZonesSet}, missed: ${stairZonesMissed}`);
         updateSupplyZones();
 
         // 4. Populate corridor zone selections and AHS
+        let corrZonesSet = 0, corrZonesMissed = 0;
         for (let i = 0; i < sg.corridors.length; i++) {
             const corr = sg.corridors[i];
-            // Use per-corridor AHS if detected, otherwise fall back to global return AHS
             const corrAhsId = corr.ahs_id || (sg.return_ahs ? sg.return_ahs.id : 0);
 
             for (const zoneInfo of corr.zones) {
                 const zoneSel = document.getElementById(`corr-${i}-zone-${zoneInfo.level_num}`);
                 if (zoneSel) {
-                    zoneSel.value = zoneInfo.zone_id;
-                    if (zoneSel.value != zoneInfo.zone_id && zoneInfo.zone_name) {
-                        for (const opt of zoneSel.options) {
-                            if (opt.text.startsWith(zoneInfo.zone_name + ' ')) {
-                                zoneSel.value = opt.value;
-                                break;
-                            }
-                        }
+                    if (setSelectByZone(zoneSel, zoneInfo)) {
+                        corrZonesSet++;
+                    } else {
+                        corrZonesMissed++;
+                        console.warn(`[AutoConfig] Could not set corridor zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
                     }
                 }
 
                 const ahsSel = document.getElementById(`corr-${i}-ahs-${zoneInfo.level_num}`);
-                if (ahsSel) ahsSel.value = corrAhsId;
+                if (ahsSel && corrAhsId) ahsSel.value = corrAhsId;
             }
         }
+        console.log(`[AutoConfig] Corridor zones set: ${corrZonesSet}, missed: ${corrZonesMissed}`);
 
         // 5. Populate roof table and path selection
         updateRoofTable();
@@ -744,13 +774,15 @@ const App = (() => {
             const returnAhsId = sg.return_ahs ? sg.return_ahs.id : 0;
 
             const zoneSel = document.getElementById(`roof-zone-${i}`);
-            if (zoneSel) zoneSel.value = roof.zone_id;
+            if (zoneSel) {
+                setSelectByZone(zoneSel, { zone_id: roof.zone_id, zone_name: '' });
+            }
 
             const levelSel = document.getElementById(`roof-level-${i}`);
             if (levelSel) levelSel.value = roof.level_num;
 
             const ahsSel = document.getElementById(`roof-ahs-${i}`);
-            if (ahsSel) ahsSel.value = returnAhsId;
+            if (ahsSel && returnAhsId) ahsSel.value = returnAhsId;
         }
 
         // 6. Set path element selections
@@ -769,18 +801,8 @@ const App = (() => {
             if (corrPathSel) corrPathSel.value = sg.corridor_path_element;
         }
 
-        // 8. Show confirmation and switch to pressurization tab
-        const banner = document.getElementById('suggestions-banner');
-        if (banner) {
-            banner.innerHTML = `
-                <h3 style="color:var(--success);">Suggestions Applied</h3>
-                <p>Stairs, corridors, AHS, roof configs, and path elements have been pre-filled.
-                   Review and adjust values in Tab 3 (Pressurization Config), then set flow rates (SCFM) for each level.</p>
-                <p><strong>Remaining steps:</strong> Set flow rates for each stair/corridor level, configure scenarios in Tab 4, then run.</p>
-            `;
-            banner.style.borderColor = 'rgba(39,174,96,0.4)';
-            banner.style.background = 'rgba(39,174,96,0.08)';
-        }
+        // 8. Summary log
+        console.log(`[AutoConfig] Applied: ${numStairs} stairs, ${numCorr} corridors, ${sg.summary.vestibules_detected} vestibules detected`);
     }
 
     function togglePanel(header) {
