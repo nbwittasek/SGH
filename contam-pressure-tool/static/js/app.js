@@ -853,11 +853,23 @@ const App = (() => {
         console.log(`[AutoConfig] Stair zones set: ${stairZonesSet}, missed: ${stairZonesMissed}`);
         updateSupplyZones();
 
-        // 4. Populate corridor zone selections and AHS (EXHAUST/RETURN at all corridor levels)
+        // 4. Smart depressurization: corridor vs floor zone per level
+        //    - If a level has a corridor zone, use corridor depressurization
+        //    - If a level has no corridor but has a floor zone, use floor zone depressurization
+        //    - This prevents double-depressurization on the same level
+
+        // First pass: build set of levels that have corridor zones
+        const levelsWithCorridor = new Set();
+        for (const corr of sg.corridors) {
+            for (const z of corr.zones) {
+                levelsWithCorridor.add(z.level_num);
+            }
+        }
+
+        // Populate corridors — zones + AHS on all levels, flow only where corridor exists
         let corrZonesSet = 0, corrZonesMissed = 0;
         for (let i = 0; i < sg.corridors.length; i++) {
             const corr = sg.corridors[i];
-            // Corridors use RETURN (exhaust) AHS for depressurization
             const corrAhsId = corr.ahs_id || (sg.return_ahs ? sg.return_ahs.id : 0);
 
             for (const zoneInfo of corr.zones) {
@@ -865,27 +877,24 @@ const App = (() => {
                 if (zoneSel) {
                     if (setSelectByZone(zoneSel, zoneInfo)) {
                         corrZonesSet++;
-                        // Set default corridor flow rate of 600 SCFM
                         const flowEl = document.getElementById(`corr-${i}-flow-${zoneInfo.level_num}`);
                         if (flowEl) flowEl.value = 600;
                     } else {
                         corrZonesMissed++;
-                        console.warn(`[AutoConfig] Could not set corridor zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
                     }
                 }
-
-                // Assign EXHAUST/RETURN AHS at every corridor level
                 const ahsSel = document.getElementById(`corr-${i}-ahs-${zoneInfo.level_num}`);
                 if (ahsSel && corrAhsId) ahsSel.value = corrAhsId;
             }
         }
-        console.log(`[AutoConfig] Corridor zones: ${corrZonesSet} set, ${corrZonesMissed} missed (AHS=RETURN/EXHAUST)`);
+        console.log(`[AutoConfig] Corridor zones: ${corrZonesSet} set, ${corrZonesMissed} missed (levels: ${[...levelsWithCorridor].sort((a,b)=>a-b).join(',')})`);
 
-        // 4b. Populate floor zone selections and AHS (EXHAUST/RETURN at all floor levels)
+        // Populate floor zones — zones + AHS everywhere, but flow only on levels WITHOUT a corridor
         if (sg.floor_zones && sg.floor_zones.length > 0) {
             document.getElementById('num-floors').value = sg.floor_zones.length;
             updateFloorTabs();
 
+            let floorActive = 0, floorSkipped = 0;
             for (let i = 0; i < sg.floor_zones.length; i++) {
                 const floorZone = sg.floor_zones[i];
                 const floorAhsId = floorZone.ahs_id || (sg.return_ahs ? sg.return_ahs.id : 0);
@@ -893,19 +902,27 @@ const App = (() => {
                 for (const zoneInfo of floorZone.zones) {
                     const zoneSel = document.getElementById(`floor-${i}-zone-${zoneInfo.level_num}`);
                     if (zoneSel) {
-                        if (setSelectByZone(zoneSel, zoneInfo)) {
-                            // Set default floor zone flow rate of 600 SCFM
-                            const flowEl = document.getElementById(`floor-${i}-flow-${zoneInfo.level_num}`);
-                            if (flowEl) flowEl.value = 600;
-                        }
+                        setSelectByZone(zoneSel, zoneInfo);
                     }
 
-                    // Assign EXHAUST/RETURN AHS at every floor zone level
+                    // AHS on every level (for reference)
                     const ahsSel = document.getElementById(`floor-${i}-ahs-${zoneInfo.level_num}`);
                     if (ahsSel && floorAhsId) ahsSel.value = floorAhsId;
+
+                    // Flow rate: only on levels that DON'T have a corridor
+                    const flowEl = document.getElementById(`floor-${i}-flow-${zoneInfo.level_num}`);
+                    if (flowEl) {
+                        if (levelsWithCorridor.has(zoneInfo.level_num)) {
+                            flowEl.value = 0; // corridor handles this level
+                            floorSkipped++;
+                        } else {
+                            flowEl.value = 600; // no corridor — floor zone handles it
+                            floorActive++;
+                        }
+                    }
                 }
             }
-            console.log(`[AutoConfig] Floor zones: ${sg.floor_zones.length} groups populated (AHS=RETURN/EXHAUST)`);
+            console.log(`[AutoConfig] Floor zones: ${sg.floor_zones.length} groups, ${floorActive} levels active, ${floorSkipped} levels skipped (corridor present)`);
         }
 
         // 5. Populate roof table and path selection
