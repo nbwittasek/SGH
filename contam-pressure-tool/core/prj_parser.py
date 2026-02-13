@@ -165,7 +165,7 @@ def _parse_levels(
     level_count = 0
     levels_start = -1
     for i, line in enumerate(lines):
-        if "levels plus icon data" in line.lower() or "levels" in line.lower() and "icon" in line.lower():
+        if "levels plus icon data" in line.lower() or ("levels" in line.lower() and "icon" in line.lower()):
             parts = line.strip().split()
             if parts and parts[0].isdigit():
                 level_count = int(parts[0])
