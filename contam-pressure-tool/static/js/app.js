@@ -316,13 +316,23 @@ const App = (() => {
         const panelsEl = document.getElementById('stair-panels');
         const labelsRow = document.getElementById('stair-labels-row');
 
+        // Preserve existing label values before rebuilding
+        const existingLabels = {};
+        for (let i = 0; i < n; i++) {
+            const el = document.getElementById(`stair-label-${i}`);
+            if (el && el.value && el.value !== `Stair_${i + 1}`) {
+                existingLabels[i] = el.value;
+            }
+        }
+
         // Stair labels
         labelsRow.innerHTML = '';
         for (let i = 0; i < n; i++) {
+            const labelVal = existingLabels[i] || `Stair_${i + 1}`;
             labelsRow.innerHTML += `
                 <div class="form-group">
                     <label>Stair ${i + 1} Label</label>
-                    <input type="text" id="stair-label-${i}" value="Stair_${i + 1}" onchange="App.updateStairTabs()">
+                    <input type="text" id="stair-label-${i}" value="${labelVal}" onchange="App.updateStairTabs()">
                 </div>`;
         }
 
@@ -388,7 +398,11 @@ const App = (() => {
                 if (ahsSel && supplyCell) {
                     const ahsId = parseInt(ahsSel.value);
                     const ahs = modelData.ahs.find(a => a.id === ahsId);
-                    supplyCell.textContent = ahs ? `Zone #${ahs.supply_zone}` : '-';
+                    if (ahs) {
+                        supplyCell.textContent = ahs.supply_zone ? `Zone #${ahs.supply_zone}` : '(auto-created)';
+                    } else {
+                        supplyCell.textContent = '-';
+                    }
                 }
             });
         }
@@ -694,12 +708,26 @@ const App = (() => {
         const sg = lastSuggestions;
         console.log('[AutoConfig] Applying suggestions:', sg.summary);
 
+        // 0. Inject auto-created AHS into modelData if model has none
+        if (sg.ahs_auto_created && sg.ahs_systems && modelData.ahs.length === 0) {
+            console.log('[AutoConfig] Injecting auto-created AHS entries:', sg.ahs_systems);
+            modelData.ahs = sg.ahs_systems.map(a => ({
+                id: a.id,
+                name: a.name,
+                return_zone: 0,
+                supply_zone: 0,
+                return_path: 0,
+                supply_path: 0,
+                exhaust_path: 0,
+            }));
+        }
+
         // 1. Set number of stairs and labels
         const numStairs = sg.stairs.length || 1;
         document.getElementById('num-stairs').value = numStairs;
 
         // Build stair labels first (updateStairTabs needs them)
-        updateStairTabs(); // creates label inputs
+        updateStairTabs(); // creates label inputs with defaults
 
         // Set stair labels
         for (let i = 0; i < sg.stairs.length; i++) {
@@ -707,7 +735,7 @@ const App = (() => {
             if (labelEl) labelEl.value = sg.stairs[i].label;
         }
 
-        // Rebuild tabs with correct labels
+        // Rebuild tabs with correct labels (labels are now preserved by updateStairTabs)
         updateStairTabs();
 
         // 2. Set number of corridors
