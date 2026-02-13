@@ -758,6 +758,9 @@ const App = (() => {
                 if (zoneSel) {
                     if (setSelectByZone(zoneSel, zoneInfo)) {
                         stairZonesSet++;
+                        // Set default flow rate of 650 SCFM at each stair level
+                        const flowEl = document.getElementById(`stair-${i}-flow-${zoneInfo.level_num}`);
+                        if (flowEl) flowEl.value = 650;
                     } else {
                         stairZonesMissed++;
                         console.warn(`[AutoConfig] Could not set stair ${stair.label} zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
@@ -788,6 +791,9 @@ const App = (() => {
                 if (zoneSel) {
                     if (setSelectByZone(zoneSel, zoneInfo)) {
                         corrZonesSet++;
+                        // Set default corridor flow rate of 650 SCFM
+                        const flowEl = document.getElementById(`corr-${i}-flow-${zoneInfo.level_num}`);
+                        if (flowEl) flowEl.value = 650;
                     } else {
                         corrZonesMissed++;
                         console.warn(`[AutoConfig] Could not set corridor zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
@@ -1307,6 +1313,10 @@ const App = (() => {
         URL.revokeObjectURL(url);
     }
 
+    function generateReport() {
+        window.open('/api/results/export/report', '_blank');
+    }
+
     // ---------------------------------------------------------------------------
     // File Browser
     // ---------------------------------------------------------------------------
@@ -1492,6 +1502,7 @@ const App = (() => {
         exportCSV,
         exportSummaryCSV,
         exportDetailedCSV,
+        generateReport,
         browseFolder,
         navigateBrowser,
         browserItemClick,

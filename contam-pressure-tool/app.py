@@ -623,6 +623,75 @@ async def export_summary_csv():
     return FileResponse(filepath, filename="Summary_All_Scenarios.csv")
 
 
+@app.get("/api/results/export/report")
+async def export_report():
+    """Generate a formatted HTML report for printing/PDF."""
+    if not analysis_engine or not analysis_engine.results:
+        raise HTTPException(404, "No results available")
+
+    from core.report_generator import generate_report_html
+
+    # Gather data for report
+    config = analysis_engine.config
+    results_summaries = analysis_engine.get_results_summary()
+
+    scenarios = [
+        {
+            "name": s.name,
+            "temp_f": s.temp_f,
+            "wind_mph": s.wind_mph,
+            "wind_dir": s.wind_dir,
+        }
+        for s in config.scenarios
+    ]
+
+    stairs = []
+    for s in config.stairs:
+        stairs.append({
+            "label": s.label,
+            "levels": s.levels,
+        })
+
+    corridors = []
+    for c in config.corridors:
+        corridors.append({
+            "label": c.label,
+            "levels": c.levels,
+        })
+
+    acceptance = config.acceptance_criteria
+
+    # Model info from first parsed model
+    model_info = None
+    if results_summaries:
+        first_scenario = config.scenarios[0]
+        try:
+            from core.prj_parser import parse_prj_file
+            m = parse_prj_file(first_scenario.base_model_path)
+            model_info = {
+                "filename": Path(first_scenario.base_model_path).name,
+                "num_levels": len(m.levels),
+                "num_zones": len(m.zones),
+                "num_paths": len(m.airflow_paths),
+                "num_ahs": len(m.ahs_systems),
+            }
+        except Exception:
+            pass
+
+    html = generate_report_html(
+        project_name=config.project_name,
+        scenarios=scenarios,
+        stairs=stairs,
+        corridors=corridors,
+        results=results_summaries,
+        acceptance_criteria=acceptance,
+        model_info=model_info,
+    )
+
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=html)
+
+
 # ---------------------------------------------------------------------------
 # File browse endpoints
 # ---------------------------------------------------------------------------
