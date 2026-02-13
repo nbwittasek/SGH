@@ -744,9 +744,11 @@ const App = (() => {
         updateCorridorTabs();
 
         // 3. Populate stair zone selections; AHS only at top (single injection)
+        // Skip "open" stairs — they don't get pressurized or airflow
         let stairZonesSet = 0, stairZonesMissed = 0;
         for (let i = 0; i < sg.stairs.length; i++) {
             const stair = sg.stairs[i];
+            const isOpen = stair.label.toLowerCase().includes('open');
             const stairAhsId = stair.ahs_id || (sg.supply_ahs ? sg.supply_ahs.id : 0);
 
             // Find top level for this stair (highest level_num = roof/top)
@@ -758,9 +760,9 @@ const App = (() => {
                 if (zoneSel) {
                     if (setSelectByZone(zoneSel, zoneInfo)) {
                         stairZonesSet++;
-                        // Set default flow rate of 650 SCFM at each stair level
+                        // Set default flow rate: 650 SCFM for enclosed stairs, 0 for open stairs
                         const flowEl = document.getElementById(`stair-${i}-flow-${zoneInfo.level_num}`);
-                        if (flowEl) flowEl.value = 650;
+                        if (flowEl) flowEl.value = isOpen ? 0 : 650;
                     } else {
                         stairZonesMissed++;
                         console.warn(`[AutoConfig] Could not set stair ${stair.label} zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
@@ -769,21 +771,25 @@ const App = (() => {
                     console.warn(`[AutoConfig] No select found: stair-${i}-zone-${zoneInfo.level_num}`);
                 }
 
-                // AHS only at the top level (single-point injection at roof)
-                if (zoneInfo.level_num === topLevel) {
+                // AHS (SUPPLY) only at the top level of enclosed stairs
+                if (!isOpen && zoneInfo.level_num === topLevel) {
                     const ahsSel = document.getElementById(`stair-${i}-ahs-${zoneInfo.level_num}`);
                     if (ahsSel && stairAhsId) ahsSel.value = stairAhsId;
-                    console.log(`[AutoConfig] AHS ${stairAhsId} assigned to ${stair.label} at top level ${topLevel}`);
+                    console.log(`[AutoConfig] SUPPLY AHS ${stairAhsId} assigned to ${stair.label} at top level ${topLevel}`);
                 }
+            }
+            if (isOpen) {
+                console.log(`[AutoConfig] Skipping AHS/flow for open stair: ${stair.label}`);
             }
         }
         console.log(`[AutoConfig] Stair zones set: ${stairZonesSet}, missed: ${stairZonesMissed}`);
         updateSupplyZones();
 
-        // 4. Populate corridor zone selections and AHS (corridor AHS at all levels — fire floor varies)
+        // 4. Populate corridor zone selections and AHS (EXHAUST/RETURN at all corridor levels)
         let corrZonesSet = 0, corrZonesMissed = 0;
         for (let i = 0; i < sg.corridors.length; i++) {
             const corr = sg.corridors[i];
+            // Corridors use RETURN (exhaust) AHS for depressurization
             const corrAhsId = corr.ahs_id || (sg.return_ahs ? sg.return_ahs.id : 0);
 
             for (const zoneInfo of corr.zones) {
@@ -800,18 +806,27 @@ const App = (() => {
                     }
                 }
 
+                // Assign EXHAUST/RETURN AHS at every corridor level
                 const ahsSel = document.getElementById(`corr-${i}-ahs-${zoneInfo.level_num}`);
                 if (ahsSel && corrAhsId) ahsSel.value = corrAhsId;
             }
         }
-        console.log(`[AutoConfig] Corridor zones set: ${corrZonesSet}, missed: ${corrZonesMissed}`);
+        console.log(`[AutoConfig] Corridor zones: ${corrZonesSet} set, ${corrZonesMissed} missed (AHS=RETURN/EXHAUST)`);
 
         // 5. Populate roof table and path selection
         updateRoofTable();
         updatePathSelection();
 
         // Set roof configs — use SUPPLY AHS (supply fan at top of stair)
+        // Skip open stairs (no roof pressurization needed)
         for (let i = 0; i < sg.roof_configs.length && i < sg.stairs.length; i++) {
+            const stairLabel = sg.stairs[i]?.label || '';
+            const isOpen = stairLabel.toLowerCase().includes('open');
+            if (isOpen) {
+                console.log(`[AutoConfig] Skipping roof config for open stair: ${stairLabel}`);
+                continue;
+            }
+
             const roof = sg.roof_configs[i];
             const supplyAhsId = sg.supply_ahs ? sg.supply_ahs.id : 0;
 
@@ -843,8 +858,19 @@ const App = (() => {
             if (corrPathSel) corrPathSel.value = sg.corridor_path_element;
         }
 
-        // 8. Summary log
-        console.log(`[AutoConfig] Applied: ${numStairs} stairs, ${numCorr} corridors, ${sg.summary.vestibules_detected} vestibules detected`);
+        // 8. Pre-populate standard scenarios (Winter/Summer x Wind/NoWind)
+        if (scenarios.length === 0) {
+            addScenario('WinterWind', '', 37, 20, 270);
+            addScenario('WinterNoWind', '', 37, 0, 270);
+            addScenario('SummerWind', '', 93, 20, 270);
+            addScenario('SummerNoWind', '', 93, 0, 270);
+            console.log('[AutoConfig] Pre-populated 4 standard scenarios (37F winter, 93F summer, 20mph wind)');
+        }
+
+        // 9. Summary log
+        const openStairs = sg.stairs.filter(s => s.label.toLowerCase().includes('open')).map(s => s.label);
+        const enclosedStairs = sg.stairs.filter(s => !s.label.toLowerCase().includes('open')).map(s => s.label);
+        console.log(`[AutoConfig] Applied: ${enclosedStairs.length} enclosed stairs (${enclosedStairs.join(', ')}), ${openStairs.length} open stairs skipped (${openStairs.join(', ')}), ${numCorr} corridors, ${sg.summary.vestibules_detected} vestibules`);
     }
 
     function togglePanel(header) {
