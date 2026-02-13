@@ -145,7 +145,7 @@ async def create_project(request: Request):
         "roof_stair_depressurization": {},
         "airflow_paths": {"stairs": {}, "corridors": []},
         "scenarios": [],
-        "acceptance_criteria": {"min_dp_inwc": 0.05, "max_dp_inwc": 0.45},
+        "acceptance_criteria": {"min_dp_inwc": 0.05, "max_dp_inwc": 0.45, "max_dp_stair_inwc": 0.17},
     }
 
     # Save project.json
@@ -195,7 +195,7 @@ async def open_project(request: Request):
             "roof_stair_depressurization": {},
             "airflow_paths": {"stairs": {}, "corridors": []},
             "scenarios": [],
-            "acceptance_criteria": {"min_dp_inwc": 0.05, "max_dp_inwc": 0.45},
+            "acceptance_criteria": {"min_dp_inwc": 0.05, "max_dp_inwc": 0.45, "max_dp_stair_inwc": 0.17},
         }
         with open(pj_path, "w") as f:
             json.dump(current_project, f, indent=2)
@@ -831,6 +831,7 @@ def _build_analysis_config(body: dict) -> AnalysisConfig:
         acceptance_criteria=body.get("acceptance_criteria", {
             "min_dp_inwc": 0.05,
             "max_dp_inwc": 0.45,
+            "max_dp_stair_inwc": 0.17,
         }),
     )
 

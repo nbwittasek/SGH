@@ -40,6 +40,7 @@ def generate_report_html(
     """
     min_dp = acceptance_criteria.get("min_dp_inwc", 0.05)
     max_dp = acceptance_criteria.get("max_dp_inwc", 0.45)
+    max_dp_stair = acceptance_criteria.get("max_dp_stair_inwc", 0.17)
     now = datetime.datetime.now().strftime("%B %d, %Y  %I:%M %p")
 
     # Build scenario table rows
@@ -134,10 +135,14 @@ def generate_report_html(
                     continue
                 total_cells += 1
                 absv = abs(num)
-                if absv < min_dp or absv > max_dp:
+                # Use stair max for S2V/V2C/EXT columns, floor max for others
+                col_name = columns[ci] if ci < len(columns) else ""
+                is_stair = col_name.endswith(("_S2V", "_V2C", "_EXT"))
+                col_max = max_dp_stair if is_stair else max_dp
+                if absv < min_dp or absv > col_max:
                     cls = "fail"
                     fail_cells += 1
-                elif absv < min_dp * 1.1 or absv > max_dp * 0.9:
+                elif absv < min_dp * 1.1 or absv > col_max * 0.9:
                     cls = "warn"
                     warn_cells += 1
                 else:
@@ -364,7 +369,8 @@ def generate_report_html(
         <h2>Acceptance Criteria</h2>
         <div class="criteria-box">
             Minimum dP: <strong>{min_dp} in. w.c.</strong> &nbsp;&nbsp;|&nbsp;&nbsp;
-            Maximum dP: <strong>{max_dp} in. w.c.</strong>
+            Maximum dP (Stairs — S2V, V2C, EXT): <strong>{max_dp_stair} in. w.c.</strong> &nbsp;&nbsp;|&nbsp;&nbsp;
+            Maximum dP (Floors): <strong>{max_dp} in. w.c.</strong>
         </div>
     </div>
 

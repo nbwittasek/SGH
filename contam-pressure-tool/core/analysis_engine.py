@@ -88,6 +88,7 @@ class AnalysisConfig:
     acceptance_criteria: dict = field(default_factory=lambda: {
         "min_dp_inwc": 0.05,
         "max_dp_inwc": 0.45,
+        "max_dp_stair_inwc": 0.17,
     })
 
 
@@ -711,6 +712,7 @@ class AnalysisEngine:
         # Pass/fail summary per level
         min_dp = self.config.acceptance_criteria.get("min_dp_inwc", 0.05)
         max_dp = self.config.acceptance_criteria.get("max_dp_inwc", 0.45)
+        max_dp_stair = self.config.acceptance_criteria.get("max_dp_stair_inwc", 0.17)
         level_summary = {}
         for lvl_idx, lvl_name in enumerate(levels):
             pass_count = 0
@@ -718,11 +720,16 @@ class AnalysisEngine:
             total_checks = 0
             for ff_idx, ff_name in enumerate(fire_floor_names):
                 table_data = tables[ff_name]["data"]
-                for ci in range(1, len(tables[ff_name]["columns"])):
+                table_cols = tables[ff_name]["columns"]
+                for ci in range(1, len(table_cols)):
                     val = table_data[lvl_idx][ci]
                     if isinstance(val, (int, float)) and val != 0:
                         total_checks += 1
-                        if min_dp <= abs(val) <= max_dp:
+                        # Use stair max for S2V/V2C/EXT columns, floor max for others
+                        col_name = table_cols[ci]
+                        is_stair_col = col_name.endswith(("_S2V", "_V2C", "_EXT"))
+                        col_max = max_dp_stair if is_stair_col else max_dp
+                        if min_dp <= abs(val) <= col_max:
                             pass_count += 1
                         else:
                             fail_count += 1

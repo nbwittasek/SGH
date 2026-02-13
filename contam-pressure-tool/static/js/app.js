@@ -1199,6 +1199,7 @@ const App = (() => {
             acceptance_criteria: {
                 min_dp_inwc: parseFloat(document.getElementById('min-dp')?.value || 0.05),
                 max_dp_inwc: parseFloat(document.getElementById('max-dp')?.value || 0.45),
+                max_dp_stair_inwc: parseFloat(document.getElementById('max-dp-stair')?.value || 0.17),
             },
         };
     }
@@ -1364,7 +1365,8 @@ const App = (() => {
         thead.innerHTML = '<tr>' + columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
 
         const minDp = parseFloat(document.getElementById('min-dp').value) || 0.05;
-        const maxDp = parseFloat(document.getElementById('max-dp').value) || 0.45;
+        const maxDpStair = parseFloat(document.getElementById('max-dp-stair').value) || 0.17;
+        const maxDpFloor = parseFloat(document.getElementById('max-dp').value) || 0.45;
 
         const rows = [];
         for (const lvlName of detailed.levels) {
@@ -1376,6 +1378,7 @@ const App = (() => {
                 if (numVal === 0) {
                     rowHtml += '<td>-</td>';
                 } else {
+                    const maxDp = _isStairColumn(col) ? maxDpStair : maxDpFloor;
                     const absVal = Math.abs(numVal);
                     let cls = '';
                     if (absVal < minDp) cls = 'dp-fail';
@@ -1407,6 +1410,10 @@ const App = (() => {
         document.getElementById('level-summary-bar').style.display = 'block';
     }
 
+    function _isStairColumn(colName) {
+        return colName.endsWith('_S2V') || colName.endsWith('_V2C') || colName.endsWith('_EXT');
+    }
+
     function renderResultsTable(columns, data, subtitle) {
         const thead = document.getElementById('results-head');
         const tbody = document.getElementById('results-body');
@@ -1418,13 +1425,15 @@ const App = (() => {
         thead.innerHTML = headerHtml;
 
         const minDp = parseFloat(document.getElementById('min-dp').value) || 0.05;
-        const maxDp = parseFloat(document.getElementById('max-dp').value) || 0.45;
+        const maxDpStair = parseFloat(document.getElementById('max-dp-stair').value) || 0.17;
+        const maxDpFloor = parseFloat(document.getElementById('max-dp').value) || 0.45;
 
         tbody.innerHTML = data.map(row =>
             '<tr>' + row.map((val, ci) => {
                 if (ci === 0) return `<td>${val}</td>`;
                 const numVal = parseFloat(val);
                 if (isNaN(numVal) || numVal === 0) return `<td>${val ?? ''}</td>`;
+                const maxDp = _isStairColumn(columns[ci]) ? maxDpStair : maxDpFloor;
                 let cls = '';
                 const absVal = Math.abs(numVal);
                 if (absVal < minDp) cls = 'dp-fail';
