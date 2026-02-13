@@ -125,6 +125,9 @@ async def create_project(request: Request):
         raise HTTPException(400, "Project folder is required")
 
     project_dir = Path(folder)
+    # If the path points to an existing file, use its parent directory
+    if project_dir.is_file():
+        project_dir = project_dir.parent
     project_dir.mkdir(parents=True, exist_ok=True)
     (project_dir / "analysis").mkdir(exist_ok=True)
 
