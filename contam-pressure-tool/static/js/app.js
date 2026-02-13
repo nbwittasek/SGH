@@ -743,7 +743,7 @@ const App = (() => {
         document.getElementById('num-corridors').value = numCorr;
         updateCorridorTabs();
 
-        // 3. Populate stair zone selections; AHS only at top (single injection)
+        // 3. Populate stair zone selections; SUPPLY AHS at every level
         // Skip "open" stairs — they don't get pressurized or airflow
         let stairZonesSet = 0, stairZonesMissed = 0;
         for (let i = 0; i < sg.stairs.length; i++) {
@@ -751,18 +751,14 @@ const App = (() => {
             const isOpen = stair.label.toLowerCase().includes('open');
             const stairAhsId = stair.ahs_id || (sg.supply_ahs ? sg.supply_ahs.id : 0);
 
-            // Find top level for this stair (highest level_num = roof/top)
-            const stairLevels = stair.zones.map(z => z.level_num);
-            const topLevel = stairLevels.length > 0 ? Math.max(...stairLevels) : 0;
-
             for (const zoneInfo of stair.zones) {
                 const zoneSel = document.getElementById(`stair-${i}-zone-${zoneInfo.level_num}`);
                 if (zoneSel) {
                     if (setSelectByZone(zoneSel, zoneInfo)) {
                         stairZonesSet++;
-                        // Set default flow rate: 650 SCFM for enclosed stairs, 0 for open stairs
+                        // Set default flow rate: 600 SCFM for enclosed stairs, 0 for open stairs
                         const flowEl = document.getElementById(`stair-${i}-flow-${zoneInfo.level_num}`);
-                        if (flowEl) flowEl.value = isOpen ? 0 : 650;
+                        if (flowEl) flowEl.value = isOpen ? 0 : 600;
                     } else {
                         stairZonesMissed++;
                         console.warn(`[AutoConfig] Could not set stair ${stair.label} zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
@@ -771,11 +767,10 @@ const App = (() => {
                     console.warn(`[AutoConfig] No select found: stair-${i}-zone-${zoneInfo.level_num}`);
                 }
 
-                // AHS (SUPPLY) only at the top level of enclosed stairs
-                if (!isOpen && zoneInfo.level_num === topLevel) {
+                // SUPPLY AHS at every level of enclosed stairs
+                if (!isOpen) {
                     const ahsSel = document.getElementById(`stair-${i}-ahs-${zoneInfo.level_num}`);
                     if (ahsSel && stairAhsId) ahsSel.value = stairAhsId;
-                    console.log(`[AutoConfig] SUPPLY AHS ${stairAhsId} assigned to ${stair.label} at top level ${topLevel}`);
                 }
             }
             if (isOpen) {
@@ -797,9 +792,9 @@ const App = (() => {
                 if (zoneSel) {
                     if (setSelectByZone(zoneSel, zoneInfo)) {
                         corrZonesSet++;
-                        // Set default corridor flow rate of 650 SCFM
+                        // Set default corridor flow rate of 600 SCFM
                         const flowEl = document.getElementById(`corr-${i}-flow-${zoneInfo.level_num}`);
-                        if (flowEl) flowEl.value = 650;
+                        if (flowEl) flowEl.value = 600;
                     } else {
                         corrZonesMissed++;
                         console.warn(`[AutoConfig] Could not set corridor zone on level ${zoneInfo.level_num}: id=${zoneInfo.zone_id}, name=${zoneInfo.zone_name}`);
