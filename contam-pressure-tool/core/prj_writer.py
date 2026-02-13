@@ -252,6 +252,173 @@ def add_pressurization_at_level(
 
 
 # ---------------------------------------------------------------------------
+# AHS auto-creation (for base models with no AHS defined)
+# ---------------------------------------------------------------------------
+
+def _find_ahs_section(lines: List[str]) -> Tuple[int, int]:
+    """Find the AHS section: returns (count_line, terminator_line)."""
+    count_line = -1
+    for i, line in enumerate(lines):
+        if "simple ahs" in line.lower() and "!" in line:
+            count_line = i
+            break
+    if count_line < 0:
+        return -1, -1
+    # Find the -999 terminator
+    for i in range(count_line + 1, min(count_line + 20, len(lines))):
+        if lines[i].strip() == "-999":
+            return count_line, i
+    return count_line, -1
+
+
+def _find_zone_section(lines: List[str]) -> Tuple[int, int, int]:
+    """Find zone section: (count_line, first_data_line, terminator_line)."""
+    count_line = -1
+    for i, line in enumerate(lines):
+        stripped = line.strip().lower()
+        if "zones:" in stripped and "!" in stripped:
+            parts = line.strip().split()
+            if parts and parts[0].isdigit():
+                count_line = i
+                break
+    if count_line < 0:
+        return -1, -1, -1
+    # Skip comment lines
+    first_data = count_line + 1
+    while first_data < len(lines) and lines[first_data].strip().startswith("!"):
+        first_data += 1
+    # Find terminator
+    for i in range(first_data, len(lines)):
+        if lines[i].strip() == "-999":
+            return count_line, first_data, i
+    return count_line, first_data, len(lines)
+
+
+def ensure_ahs_systems(lines: List[str]) -> Tuple[int, int]:
+    """Create SUPPLY and RETURN AHS systems if none exist.
+
+    Modifies the PRJ lines in-place to add:
+      - 4 AHS zones: SUPPLY(Rec), SUPPLY(Sup), RETURN(Rec), RETURN(Sup)
+      - 2 AHS definitions (SUPPLY, RETURN)
+
+    Returns: (supply_ahs_id, return_ahs_id) — typically (1, 2)
+    If AHS already exist, returns the IDs of existing supply/return.
+    """
+    ahs_count_line, ahs_term_line = _find_ahs_section(lines)
+    if ahs_count_line < 0:
+        return 0, 0
+
+    # Check current AHS count
+    parts = lines[ahs_count_line].strip().split()
+    ahs_count = int(parts[0]) if parts and parts[0].isdigit() else 0
+
+    if ahs_count > 0:
+        # AHS already exist — find supply and return IDs
+        supply_id = 0
+        return_id = 0
+        for i in range(ahs_count_line + 1, ahs_term_line):
+            line = lines[i].strip()
+            if not line or line.startswith("!"):
+                continue
+            p = line.split()
+            if len(p) >= 7:
+                ahs_id = int(p[0])
+                name = p[-1] if len(p) >= 8 else p[6]
+                if "supply" in name.lower() or "press" in name.lower():
+                    supply_id = ahs_id
+                elif "return" in name.lower() or "exhaust" in name.lower():
+                    return_id = ahs_id
+        # Fallback if names don't match
+        if not supply_id and ahs_count >= 2:
+            supply_id = 2
+        if not return_id and ahs_count >= 1:
+            return_id = 1
+        return supply_id, return_id
+
+    # --- Create new AHS systems ---
+
+    # Find max zone ID
+    zone_count_line, zone_first, zone_term = _find_zone_section(lines)
+    max_zone_id = 0
+    if zone_first >= 0:
+        for i in range(zone_first, zone_term):
+            p = lines[i].strip().split()
+            if p and p[0].lstrip("-").isdigit():
+                zid = int(p[0])
+                if zid > max_zone_id:
+                    max_zone_id = zid
+
+    # Find max path ID
+    path_count_line, _, path_first = _find_path_section(lines)
+    max_path_id = 0
+    if path_first >= 0:
+        path_term = _find_path_terminator(lines, path_first)
+        for i in range(path_first, path_term):
+            p = lines[i].strip().split()
+            if p and p[0].lstrip("-").isdigit():
+                pid = int(p[0])
+                if pid > max_path_id:
+                    max_path_id = pid
+
+    # Assign new IDs
+    supply_rec_zid = max_zone_id + 1
+    supply_sup_zid = max_zone_id + 2
+    return_rec_zid = max_zone_id + 3
+    return_sup_zid = max_zone_id + 4
+
+    supply_ret_pid = max_path_id + 1
+    supply_sup_pid = max_path_id + 2
+    supply_exh_pid = max_path_id + 3
+    return_ret_pid = max_path_id + 4
+    return_sup_pid = max_path_id + 5
+    return_exh_pid = max_path_id + 6
+
+    supply_ahs_id = 1
+    return_ahs_id = 2
+
+    # Pick a level to place AHS zones on (middle level)
+    level_positions = re_extract_level_positions(lines)
+    mid_level = level_positions[len(level_positions) // 2]["level_index"] if level_positions else 1
+
+    # 1. Insert AHS zone definitions before the zone terminator (-999)
+    # Recalculate zone_term since lines haven't changed yet
+    _, _, zone_term = _find_zone_section(lines)
+    new_zones = [
+        f"  {supply_rec_zid} 10   0   0   0  {mid_level}   0.000     0 293.15 0 SUPPLY(Rec) -1 1 3 1 1 0 0 0\n",
+        f"  {supply_sup_zid} 10   0   0   0  {mid_level}   0.000     0 293.15 0 SUPPLY(Sup) -1 1 3 1 1 0 0 0\n",
+        f"  {return_rec_zid} 10   0   0   0  {mid_level}   0.000     0 293.15 0 RETURN(Rec) -1 1 3 1 1 0 0 0\n",
+        f"  {return_sup_zid} 10   0   0   0  {mid_level}   0.000     0 293.15 0 RETURN(Sup) -1 1 3 1 1 0 0 0\n",
+    ]
+    for i, zline in enumerate(new_zones):
+        lines.insert(zone_term + i, zline)
+
+    # Update zone count
+    zone_count_line_new, _, _ = _find_zone_section(lines)
+    old_zcount = int(lines[zone_count_line_new].strip().split()[0])
+    lines[zone_count_line_new] = lines[zone_count_line_new].replace(
+        str(old_zcount), str(old_zcount + 4), 1
+    )
+
+    # 2. Insert AHS definitions
+    ahs_count_line_new, ahs_term_new = _find_ahs_section(lines)
+    ahs_defs = [
+        f"! # zr# zs# pr# ps# px# name\n",
+        f"  {supply_ahs_id} {supply_rec_zid} {supply_sup_zid} {supply_ret_pid} {supply_sup_pid} {supply_exh_pid} -1 SUPPLY\n",
+        f"\n",
+        f"  {return_ahs_id} {return_rec_zid} {return_sup_zid} {return_ret_pid} {return_sup_pid} {return_exh_pid} -1 RETURN\n",
+        f"\n",
+    ]
+    for i, aline in enumerate(ahs_defs):
+        lines.insert(ahs_term_new + i, aline)
+
+    # Update AHS count
+    ahs_count_line_final, _ = _find_ahs_section(lines)
+    lines[ahs_count_line_final] = lines[ahs_count_line_final].replace("0 !", "2 !", 1)
+
+    return supply_ahs_id, return_ahs_id
+
+
+# ---------------------------------------------------------------------------
 # Re-extract level positions after modifications
 # ---------------------------------------------------------------------------
 
@@ -334,6 +501,9 @@ def build_modified_prj(
     # Step 2: Set weather
     set_weather(lines, temp_f, wind_mph, wind_dir)
 
+    # Step 2b: Ensure AHS systems exist (creates SUPPLY + RETURN if missing)
+    supply_ahs_id, return_ahs_id = ensure_ahs_systems(lines)
+
     # Track next path ID
     # Find max existing path ID
     _, _, first_data = _find_path_section(lines)
@@ -349,7 +519,11 @@ def build_modified_prj(
     next_path_id = max_path_id + 1
 
     # Step 3: Add stair pressurization at ALL levels
+    # If stair configs have ahs_id=0, use the auto-created supply AHS
     for stair_cfg in stair_configs:
+        for level_entry in stair_cfg["levels"]:
+            if level_entry.get("ahs_id", 0) == 0 and supply_ahs_id:
+                level_entry["ahs_id"] = supply_ahs_id
         for level_entry in stair_cfg["levels"]:
             zone_id = level_entry.get("zone_id", 0)
             flow_rate = level_entry.get("flow_rate", 0)
@@ -413,6 +587,8 @@ def build_modified_prj(
 
         exhaust_zone = roof_cfg.get("exhaust_zone", 0)
         ahs_id = roof_cfg.get("ahs_id", 0)
+        if ahs_id == 0 and return_ahs_id:
+            ahs_id = return_ahs_id
         icon_type = roof_cfg.get("icon_type", 129)
         icon_col = roof_cfg.get("icon_col", 1)
         icon_row = roof_cfg.get("icon_row", 1)
@@ -458,6 +634,8 @@ def build_modified_prj(
 
             exhaust_zone = level_entry.get("exhaust_zone", 0)
             ahs_id = level_entry.get("ahs_id", 0)
+            if ahs_id == 0 and return_ahs_id:
+                ahs_id = return_ahs_id
             icon_type = level_entry.get("icon_type", 129)
             icon_col = level_entry.get("icon_col", 1)
             icon_row = level_entry.get("icon_row", 1)

@@ -429,11 +429,29 @@ async def auto_configure(model_id: str):
         for lvl in model.levels
     ]
 
-    # Include AHS list
-    config["ahs_systems"] = [
-        {"id": ahs.id, "name": ahs.name}
-        for ahs in model.ahs_systems
-    ]
+    # Include AHS list — if model has no AHS, include placeholder entries
+    # so the frontend knows AHS will be auto-created at generation time
+    if model.ahs_systems:
+        config["ahs_systems"] = [
+            {"id": ahs.id, "name": ahs.name}
+            for ahs in model.ahs_systems
+        ]
+    else:
+        config["ahs_systems"] = [
+            {"id": 1, "name": "SUPPLY (auto-created)"},
+            {"id": 2, "name": "RETURN (auto-created)"},
+        ]
+        # Also set supply/return AHS in config so frontend can assign them
+        config["supply_ahs"] = {"id": 1, "name": "SUPPLY (auto-created)"}
+        config["return_ahs"] = {"id": 2, "name": "RETURN (auto-created)"}
+        # Assign to stairs/corridors that have no AHS
+        for stair in config["stairs"]:
+            if not stair.get("ahs_id"):
+                stair["ahs_id"] = 1
+        for corridor in config["corridors"]:
+            if not corridor.get("ahs_id"):
+                corridor["ahs_id"] = 2
+        config["ahs_auto_created"] = True
 
     return config
 
