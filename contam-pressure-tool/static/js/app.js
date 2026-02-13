@@ -1140,35 +1140,83 @@ const App = (() => {
     // ---------------------------------------------------------------------------
     // File Browser
     // ---------------------------------------------------------------------------
+    let browserFileFilter = '';  // e.g. '.prj' to highlight PRJ files
+
     function browseFolder(targetInputId) {
         browserTargetInput = targetInputId;
-        const currentVal = document.getElementById(targetInputId)?.value || '';
-        document.getElementById('browser-path-input').value = currentVal;
+        browserSelectedPath = '';
+
+        // Set file filter based on which input we're browsing for
+        browserFileFilter = (targetInputId === 'prj-filepath') ? '.prj' : '';
+
+        // Determine a good starting path
+        let startPath = document.getElementById(targetInputId)?.value?.trim() || '';
+        if (!startPath) {
+            // Try project folder as fallback
+            const projFolder = document.getElementById('project-folder')?.value?.trim() || '';
+            startPath = projFolder || '';
+        }
+        // If we have a file path, navigate to its parent directory
+        if (startPath && startPath.match(/\.\w+$/)) {
+            const sep = startPath.includes('\\') ? '\\' : '/';
+            startPath = startPath.substring(0, startPath.lastIndexOf(sep)) || startPath;
+        }
+
+        document.getElementById('browser-path-input').value = startPath;
         document.getElementById('file-browser-modal').style.display = 'flex';
-        navigateBrowserTo(currentVal || '/');
+        navigateBrowserTo(startPath);
     }
 
     async function navigateBrowser() {
         const path = document.getElementById('browser-path-input').value.trim();
-        if (path) navigateBrowserTo(path);
+        navigateBrowserTo(path);
     }
 
     async function navigateBrowserTo(path) {
         browserCurrentPath = path;
         try {
-            const resp = await api('POST', '/api/browse/list', { path });
+            const resp = await api('POST', '/api/browse/list', { path: path || '' });
             browserCurrentPath = resp.current_path || path;
             document.getElementById('browser-path-input').value = browserCurrentPath;
 
             const list = document.getElementById('browser-list');
-            list.innerHTML = resp.items.map(item => {
-                const icon = item.type === 'dir' || item.type === 'drive' ? '&#128193;' : '&#128196;';
-                return `<div class="browser-item" data-path="${item.path}" data-type="${item.type}" onclick="App.browserItemClick(this)">
+            let items = resp.items || [];
+
+            // Sort: directories first, then files; PRJ files highlighted at top of files
+            items.sort((a, b) => {
+                if (a.type !== b.type) {
+                    if (a.type === 'drive') return -1;
+                    if (b.type === 'drive') return 1;
+                    if (a.type === 'dir') return -1;
+                    if (b.type === 'dir') return 1;
+                }
+                // If filtering for a file type, put matching files first
+                if (browserFileFilter && a.type === 'file' && b.type === 'file') {
+                    const aMatch = (a.ext || '').toLowerCase() === browserFileFilter;
+                    const bMatch = (b.ext || '').toLowerCase() === browserFileFilter;
+                    if (aMatch && !bMatch) return -1;
+                    if (!aMatch && bMatch) return 1;
+                }
+                return a.name.localeCompare(b.name);
+            });
+
+            list.innerHTML = items.map(item => {
+                const isDir = item.type === 'dir' || item.type === 'drive';
+                const icon = isDir ? '&#128193;' : '&#128196;';
+                const isMatch = browserFileFilter && !isDir && (item.ext || '').toLowerCase() === browserFileFilter;
+                const dimClass = browserFileFilter && !isDir && !isMatch ? ' dimmed' : '';
+                const highlightClass = isMatch ? ' highlighted' : '';
+                const sizeStr = item.size ? ` (${(item.size / 1024).toFixed(0)} KB)` : '';
+                return `<div class="browser-item${dimClass}${highlightClass}" data-path="${item.path}" data-type="${item.type}" onclick="App.browserItemClick(this)" ondblclick="App.browserItemDblClick(this)">
                     <span class="icon">${icon}</span>
                     <span class="name">${item.name}</span>
-                    <span class="meta">${item.type === 'file' ? (item.ext || '') : ''}</span>
+                    <span class="meta">${!isDir ? (item.ext || '') + sizeStr : ''}</span>
                 </div>`;
             }).join('');
+
+            if (items.length === 0) {
+                list.innerHTML = '<div style="padding:1rem;color:var(--text-muted);">Empty folder</div>';
+            }
         } catch (e) {
             document.getElementById('browser-list').innerHTML = `<div style="padding:1rem;color:var(--danger);">${e.message}</div>`;
         }
@@ -1181,10 +1229,23 @@ const App = (() => {
         if (type === 'dir' || type === 'drive') {
             navigateBrowserTo(path);
         } else {
-            // Select file
+            // Select file — highlight it
             document.querySelectorAll('.browser-item').forEach(i => i.classList.remove('selected'));
             el.classList.add('selected');
             browserSelectedPath = path;
+        }
+    }
+
+    function browserItemDblClick(el) {
+        const type = el.dataset.type;
+        const path = el.dataset.path;
+
+        if (type === 'dir' || type === 'drive') {
+            navigateBrowserTo(path);
+        } else {
+            // Double-click on file: select it and close the browser
+            browserSelectedPath = path;
+            selectBrowserPath();
         }
     }
 
@@ -1192,7 +1253,7 @@ const App = (() => {
         if (browserCurrentPath) {
             const parts = browserCurrentPath.replace(/\\/g, '/').split('/');
             parts.pop();
-            const parent = parts.join('/') || '/';
+            const parent = parts.join('/') || '';
             navigateBrowserTo(parent);
         }
     }
@@ -1208,6 +1269,7 @@ const App = (() => {
     function closeBrowser() {
         document.getElementById('file-browser-modal').style.display = 'none';
         browserSelectedPath = '';
+        browserFileFilter = '';
     }
 
     // ---------------------------------------------------------------------------
@@ -1260,6 +1322,7 @@ const App = (() => {
         browseFolder,
         navigateBrowser,
         browserItemClick,
+        browserItemDblClick,
         browserUp,
         selectBrowserPath,
         closeBrowser,
