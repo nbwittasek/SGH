@@ -1077,6 +1077,8 @@ const App = (() => {
     // ---------------------------------------------------------------------------
     // Results
     // ---------------------------------------------------------------------------
+    let cachedDetailedResults = null;
+
     async function loadResultsScenarios() {
         try {
             const summaries = await api('GET', '/api/results/summary');
@@ -1091,18 +1093,123 @@ const App = (() => {
     async function loadResults() {
         const scenario = document.getElementById('result-scenario-filter').value;
         if (!scenario) return;
+        cachedDetailedResults = null;
 
-        try {
-            const resp = await api('GET', `/api/results/${scenario}`);
-            renderResultsTable(resp.columns, resp.data);
-        } catch (e) { alert('Error loading results: ' + e.message); }
+        const viewMode = document.getElementById('result-view-mode').value;
+        if (viewMode === 'summary') {
+            document.getElementById('fire-floor-selector').style.display = 'none';
+            try {
+                const resp = await api('GET', `/api/results/${scenario}`);
+                renderResultsTable(resp.columns, resp.data);
+                // Try to load detailed for level summary
+                try {
+                    cachedDetailedResults = await api('GET', `/api/results/${scenario}/detailed`);
+                    renderLevelSummary(cachedDetailedResults.level_summary);
+                } catch (e) { /* no detailed available */ }
+            } catch (e) { alert('Error loading results: ' + e.message); }
+        } else if (viewMode === 'detailed' || viewMode === 'worst_case') {
+            await loadDetailedResults(scenario);
+        }
     }
 
-    function renderResultsTable(columns, data) {
+    async function loadDetailedResults(scenario) {
+        try {
+            cachedDetailedResults = await api('GET', `/api/results/${scenario}/detailed`);
+            const d = cachedDetailedResults;
+
+            if (document.getElementById('result-view-mode').value === 'detailed') {
+                // Populate fire floor dropdown
+                const ffSel = document.getElementById('result-fire-floor');
+                ffSel.innerHTML = '';
+                d.fire_floor_names.forEach((name, idx) => {
+                    ffSel.innerHTML += `<option value="${name}">${name}</option>`;
+                });
+                document.getElementById('fire-floor-selector').style.display = 'flex';
+                loadDetailedFireFloor();
+            } else {
+                // Worst-case view
+                document.getElementById('fire-floor-selector').style.display = 'none';
+                renderWorstCaseTable(d);
+            }
+            renderLevelSummary(d.level_summary);
+        } catch (e) { alert('Error loading detailed results: ' + e.message); }
+    }
+
+    function loadDetailedFireFloor() {
+        if (!cachedDetailedResults) return;
+        const ffName = document.getElementById('result-fire-floor').value;
+        const table = cachedDetailedResults.tables[ffName];
+        if (table) {
+            renderResultsTable(table.columns, table.data, `Fire Floor: ${ffName}`);
+        }
+    }
+
+    function switchResultView() {
+        loadResults();
+    }
+
+    function renderWorstCaseTable(detailed) {
         const thead = document.getElementById('results-head');
         const tbody = document.getElementById('results-body');
 
+        // Columns: Level, then for each metric: value + which fire floor
+        const metricCols = detailed.tables[detailed.fire_floor_names[0]]?.columns.slice(1) || [];
+        const columns = ['Level', ...metricCols];
         thead.innerHTML = '<tr>' + columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
+
+        const minDp = parseFloat(document.getElementById('min-dp').value) || 0.05;
+        const maxDp = parseFloat(document.getElementById('max-dp').value) || 0.45;
+
+        const rows = [];
+        for (const lvlName of detailed.levels) {
+            const wc = detailed.worst_case[lvlName];
+            let rowHtml = `<td>${lvlName}</td>`;
+            for (const col of metricCols) {
+                const info = wc?.[col] || { value: 0, fire_floor: '' };
+                const numVal = info.value;
+                if (numVal === 0) {
+                    rowHtml += '<td>-</td>';
+                } else {
+                    const absVal = Math.abs(numVal);
+                    let cls = '';
+                    if (absVal < minDp) cls = 'dp-fail';
+                    else if (absVal > maxDp) cls = 'dp-fail';
+                    else if (absVal < minDp * 1.1 || absVal > maxDp * 0.9) cls = 'dp-warn';
+                    else cls = 'dp-pass';
+                    rowHtml += `<td class="${cls}">${numVal.toFixed(4)}<span class="worst-ff">${info.fire_floor}</span></td>`;
+                }
+            }
+            rows.push(`<tr>${rowHtml}</tr>`);
+        }
+        tbody.innerHTML = rows.join('');
+    }
+
+    function renderLevelSummary(levelSummary) {
+        if (!levelSummary) {
+            document.getElementById('level-summary-bar').style.display = 'none';
+            return;
+        }
+        const container = document.getElementById('level-summary-content');
+        let html = '';
+        for (const [lvl, info] of Object.entries(levelSummary)) {
+            const cls = info.status === 'pass' ? 'pass' : (info.status === 'fail' ? 'fail' : 'no-data');
+            const title = info.status === 'no_data' ? 'No data'
+                : `Pass: ${info.pass}/${info.total}, Fail: ${info.fail}`;
+            html += `<span class="level-badge ${cls}" title="${title}">${lvl}</span>`;
+        }
+        container.innerHTML = html;
+        document.getElementById('level-summary-bar').style.display = 'block';
+    }
+
+    function renderResultsTable(columns, data, subtitle) {
+        const thead = document.getElementById('results-head');
+        const tbody = document.getElementById('results-body');
+
+        let headerHtml = '<tr>' + columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
+        if (subtitle) {
+            headerHtml = `<tr><th colspan="${columns.length}" style="text-align:center;background:rgba(46,134,222,0.08);font-size:0.85rem;">${subtitle}</th></tr>` + headerHtml;
+        }
+        thead.innerHTML = headerHtml;
 
         const minDp = parseFloat(document.getElementById('min-dp').value) || 0.05;
         const maxDp = parseFloat(document.getElementById('max-dp').value) || 0.45;
@@ -1135,6 +1242,33 @@ const App = (() => {
 
     async function exportSummaryCSV() {
         window.open('/api/results/export/summary-csv', '_blank');
+    }
+
+    async function exportDetailedCSV() {
+        if (!cachedDetailedResults) {
+            alert('No detailed results loaded. Run an analysis first.');
+            return;
+        }
+        const d = cachedDetailedResults;
+        // Build CSV with all fire floors
+        let csv = '';
+        for (const ffName of d.fire_floor_names) {
+            const table = d.tables[ffName];
+            csv += `\nFire Floor: ${ffName}\n`;
+            csv += table.columns.join(',') + '\n';
+            for (const row of table.data) {
+                csv += row.map(v => typeof v === 'number' ? v.toFixed(4) : v).join(',') + '\n';
+            }
+        }
+        csv += '\nUnits: in. H2O\n';
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Detailed_Results_${d.scenario}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     // ---------------------------------------------------------------------------
@@ -1316,9 +1450,12 @@ const App = (() => {
         startAnalysis,
         cancelAnalysis,
         loadResults,
+        switchResultView,
+        loadDetailedFireFloor,
         applyHighlighting,
         exportCSV,
         exportSummaryCSV,
+        exportDetailedCSV,
         browseFolder,
         navigateBrowser,
         browserItemClick,

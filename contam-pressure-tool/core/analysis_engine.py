@@ -557,3 +557,151 @@ class AnalysisEngine:
             }
             summaries.append(summary)
         return summaries
+
+    def get_detailed_results(self, scenario_name: str) -> Optional[dict]:
+        """Get per-fire-floor detailed results for a scenario.
+
+        Returns a dict with:
+            fire_floor_levels: list of fire floor level numbers
+            fire_floor_names: list of fire floor level names
+            levels: list of level names (rows)
+            stair_labels: list of stair labels
+            tables: dict mapping fire_floor_name -> {columns, data}
+                Each table shows dP values for that specific fire floor.
+            worst_case: dict mapping level_name -> {column -> {value, fire_floor}}
+                Shows which fire floor produces the worst dP at each level.
+        """
+        result = None
+        model = None
+        for r in self.results:
+            if r.scenario_name == scenario_name:
+                result = r
+                break
+        if result is None or result.output_table is None:
+            return None
+
+        # Re-parse model for level names
+        for scenario in self.config.scenarios:
+            if scenario.name == scenario_name:
+                model = parse_prj_file(scenario.base_model_path)
+                break
+        if model is None:
+            return None
+
+        levels = [lvl.name for lvl in model.levels]
+        fire_floors = result.fire_floor_levels
+        fire_floor_names = []
+        for ff in fire_floors:
+            name = f"Level{ff}"
+            for lvl in model.levels:
+                if lvl.index == ff:
+                    name = lvl.name
+                    break
+            fire_floor_names.append(name)
+
+        stairs = result.stair_labels
+
+        # Build per-fire-floor tables
+        tables = {}
+        for ff_idx, ff_name in enumerate(fire_floor_names):
+            columns = ["Level"]
+            columns.extend(["dP_Corridor_Below", "dP_Corridor_Above"])
+            for s in stairs:
+                columns.append(f"{s}_S2V")
+            for s in stairs:
+                columns.append(f"{s}_V2C")
+            for s in stairs:
+                columns.append(f"{s}_EXT")
+
+            rows = []
+            for lvl_idx in range(len(levels)):
+                row = [levels[lvl_idx]]
+
+                # Corridor dP for this fire floor
+                if ff_idx < len(result.corridor_dp_below):
+                    row.append(pa_to_inwc(float(abs(result.corridor_dp_below[ff_idx]))))
+                    row.append(pa_to_inwc(float(abs(result.corridor_dp_above[ff_idx]))))
+                else:
+                    row.extend([0.0, 0.0])
+
+                for s in stairs:
+                    if s in result.stair_dp and lvl_idx < result.stair_dp[s].shape[0]:
+                        row.append(pa_to_inwc(float(abs(result.stair_dp[s][lvl_idx, ff_idx]))))
+                    else:
+                        row.append(0.0)
+                for s in stairs:
+                    if s in result.vest_dp and lvl_idx < result.vest_dp[s].shape[0]:
+                        row.append(pa_to_inwc(float(abs(result.vest_dp[s][lvl_idx, ff_idx]))))
+                    else:
+                        row.append(0.0)
+                for s in stairs:
+                    if s in result.ext_dp and lvl_idx < result.ext_dp[s].shape[0]:
+                        row.append(pa_to_inwc(float(abs(result.ext_dp[s][lvl_idx, ff_idx]))))
+                    else:
+                        row.append(0.0)
+
+                rows.append(row)
+            tables[ff_name] = {"columns": columns, "data": rows}
+
+        # Build worst-case analysis: for each level + column, which fire floor is worst
+        worst_case = {}
+        columns = ["dP_Corridor_Below", "dP_Corridor_Above"]
+        for s in stairs:
+            columns.append(f"{s}_S2V")
+        for s in stairs:
+            columns.append(f"{s}_V2C")
+        for s in stairs:
+            columns.append(f"{s}_EXT")
+
+        for lvl_idx, lvl_name in enumerate(levels):
+            worst_case[lvl_name] = {}
+            for col in columns:
+                worst_val = 0.0
+                worst_ff = ""
+                for ff_idx, ff_name in enumerate(fire_floor_names):
+                    table_data = tables[ff_name]["data"]
+                    col_idx = tables[ff_name]["columns"].index(col)
+                    val = table_data[lvl_idx][col_idx]
+                    if isinstance(val, (int, float)) and abs(val) > abs(worst_val):
+                        worst_val = val
+                        worst_ff = ff_name
+                worst_case[lvl_name][col] = {
+                    "value": round(worst_val, 4),
+                    "fire_floor": worst_ff,
+                }
+
+        # Pass/fail summary per level
+        min_dp = self.config.acceptance_criteria.get("min_dp_inwc", 0.05)
+        max_dp = self.config.acceptance_criteria.get("max_dp_inwc", 0.45)
+        level_summary = {}
+        for lvl_idx, lvl_name in enumerate(levels):
+            pass_count = 0
+            fail_count = 0
+            total_checks = 0
+            for ff_idx, ff_name in enumerate(fire_floor_names):
+                table_data = tables[ff_name]["data"]
+                for ci in range(1, len(tables[ff_name]["columns"])):
+                    val = table_data[lvl_idx][ci]
+                    if isinstance(val, (int, float)) and val != 0:
+                        total_checks += 1
+                        if min_dp <= abs(val) <= max_dp:
+                            pass_count += 1
+                        else:
+                            fail_count += 1
+            level_summary[lvl_name] = {
+                "pass": pass_count,
+                "fail": fail_count,
+                "total": total_checks,
+                "status": "pass" if fail_count == 0 and total_checks > 0 else ("fail" if fail_count > 0 else "no_data"),
+            }
+
+        return {
+            "scenario": scenario_name,
+            "fire_floor_levels": fire_floors,
+            "fire_floor_names": fire_floor_names,
+            "levels": levels,
+            "stair_labels": stairs,
+            "tables": tables,
+            "worst_case": worst_case,
+            "level_summary": level_summary,
+        }

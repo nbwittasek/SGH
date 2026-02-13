@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CONTAM Pressurization Tool — SGH</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=3">
+    <link rel="stylesheet" href="/static/css/style.css?v=4">
 </head>
 <body>
     <div class="app-layout">
@@ -289,10 +289,24 @@
                 <div class="filter-row">
                     <label>Scenario: </label>
                     <select id="result-scenario-filter" onchange="App.loadResults()"></select>
+                    <label style="margin-left:1rem;">View: </label>
+                    <select id="result-view-mode" onchange="App.switchResultView()">
+                        <option value="summary">Summary (Max across fire floors)</option>
+                        <option value="detailed">Per-Fire-Floor Detail</option>
+                        <option value="worst_case">Worst-Case Analysis</option>
+                    </select>
                 </div>
+
+                <!-- Fire floor selector (visible in detailed mode) -->
+                <div id="fire-floor-selector" class="filter-row" style="display:none; margin-top:0.5rem;">
+                    <label>Fire Floor: </label>
+                    <select id="result-fire-floor" onchange="App.loadDetailedFireFloor()"></select>
+                </div>
+
                 <div class="btn-row" style="margin:1rem 0;">
                     <button class="btn" onclick="App.exportCSV()">Export CSV</button>
                     <button class="btn" onclick="App.exportSummaryCSV()">Export Summary CSV</button>
+                    <button class="btn" onclick="App.exportDetailedCSV()">Export Detailed CSV</button>
                 </div>
                 <div id="criteria-config" class="info-box">
                     <h3>Acceptance Criteria</h3>
@@ -308,6 +322,13 @@
                         <button class="btn btn-sm" onclick="App.applyHighlighting()">Apply</button>
                     </div>
                 </div>
+
+                <!-- Level pass/fail summary bar (visible after analysis) -->
+                <div id="level-summary-bar" style="display:none; margin-bottom:1rem;">
+                    <h3>Level Pass/Fail Summary</h3>
+                    <div id="level-summary-content" class="level-summary-grid"></div>
+                </div>
+
                 <div class="table-container">
                     <table id="tbl-results">
                         <thead id="results-head"></thead>
@@ -340,6 +361,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=3"></script>
+    <script src="/static/js/app.js?v=4"></script>
 </body>
 </html>

@@ -559,6 +559,28 @@ td input[type="number"] { width: 80px; }
 .browser-item.highlighted .name { color: var(--success); }
 .browser-item.dimmed { opacity: 0.45; }
 
+/* Level summary grid */
+.level-summary-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 0.5rem;
+}
+.level-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.level-badge.pass { background: rgba(39,174,96,0.15); color: #27ae60; border: 1px solid rgba(39,174,96,0.3); }
+.level-badge.fail { background: rgba(231,76,60,0.15); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3); }
+.level-badge.no-data { background: rgba(127,140,155,0.1); color: var(--text-secondary); border: 1px solid var(--border); }
+
+/* Worst-case fire floor highlight */
+.worst-ff { font-size: 0.65rem; display: block; color: var(--text-secondary); }
+
 /* Parsed data */
 .parsed-data { margin-top: 1rem; }
 

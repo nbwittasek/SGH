@@ -781,7 +781,14 @@ def _detect_path_elements_for_stair(
         "s2c": re.compile(r"(?i)s2c(?!2)"),  # stair-to-corridor (no vestibule)
     }
 
+    # Build a set of element IDs that are actually referenced by airflow paths
+    used_elem_ids = {p.flow_elem_id for p in model.airflow_paths}
+
     for elem in model.flow_elements:
+        # Skip elements that exist but are not referenced by any airflow path
+        if elem.id not in used_elem_ids:
+            continue
+
         elem_clean = elem.name.replace("_", "").replace("-", "").replace(" ", "").lower()
         # Check if this element name contains any variant of the stair name
         matches_stair = any(v in elem_clean for v in variants)

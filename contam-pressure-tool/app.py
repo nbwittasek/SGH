@@ -570,6 +570,17 @@ async def get_results_summary():
     return analysis_engine.get_results_summary()
 
 
+@app.get("/api/results/{scenario}/detailed")
+async def get_detailed_results(scenario: str):
+    """Get per-fire-floor detailed results for a scenario."""
+    if not analysis_engine or not analysis_engine.results:
+        raise HTTPException(404, "No results available")
+    detailed = analysis_engine.get_detailed_results(scenario)
+    if detailed is None:
+        raise HTTPException(404, f"Detailed results for '{scenario}' not found")
+    return detailed
+
+
 @app.get("/api/results/export/csv")
 async def export_csv(scenario: Optional[str] = None):
     if not analysis_engine or not analysis_engine.results:
