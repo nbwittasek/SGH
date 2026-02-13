@@ -873,9 +873,6 @@ const App = (() => {
         const windSpeed = prompt('Wind speed (mph):', '20');
         if (!winterTemp || !summerTemp || !windSpeed) return;
 
-        // Get first base model if available
-        const baseKeys = Object.keys(modelData.levels.length ? { 'default': '' } : {});
-
         addScenario('WinterWind', '', parseFloat(winterTemp), parseFloat(windSpeed), 270);
         addScenario('WinterNoWind', '', parseFloat(winterTemp), 0, 270);
         addScenario('SummerWind', '', parseFloat(summerTemp), parseFloat(windSpeed), 270);
@@ -1465,8 +1462,21 @@ const App = (() => {
     // ---------------------------------------------------------------------------
     // Init
     // ---------------------------------------------------------------------------
+    function initScenarioSelectAll() {
+        const selectAll = document.getElementById('scenario-select-all');
+        if (selectAll) {
+            selectAll.addEventListener('change', () => {
+                const checked = selectAll.checked;
+                document.querySelectorAll('#scenario-body input[type="checkbox"]').forEach(cb => {
+                    cb.checked = checked;
+                });
+            });
+        }
+    }
+
     function init() {
         initTabs();
+        initScenarioSelectAll();
         loadRecentProjects();
         loadResultsScenarios();
     }
@@ -1488,7 +1498,7 @@ const App = (() => {
         autoPopulateCorridor,
         applySuggestions,
         togglePanel,
-        addScenario: () => addScenario(),
+        addScenario: () => addScenario(`Scenario_${scenarios.length + 1}`, '', 70, 0, 270),
         addStandardSet,
         removeSelectedScenario,
         updateScenario,

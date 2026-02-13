@@ -465,8 +465,10 @@ class AnalysisEngine:
     ) -> pd.DataFrame:
         """Compile results into a summary DataFrame."""
         levels = [lvl.name for lvl in model.levels]
+        level_indices = [lvl.index for lvl in model.levels]
         num_levels = len(levels)
         stairs = result.stair_labels
+        fire_floors = result.fire_floor_levels
 
         columns = ["Level"]
         columns.extend(["dP_Corridor_Below", "dP_Corridor_Above"])
@@ -477,17 +479,28 @@ class AnalysisEngine:
         for s in stairs:
             columns.append(f"{s}_EXT")
 
+        # Build per-level corridor dP by finding max across fire floors
+        # where this level is adjacent (below or above) to the fire floor
+        corridor_below_by_level = np.zeros(num_levels)
+        corridor_above_by_level = np.zeros(num_levels)
+        for ff_idx, ff_level in enumerate(fire_floors):
+            for lvl_idx, lvl_index in enumerate(level_indices):
+                # This level is "below" the fire floor
+                if lvl_index == ff_level - 1:
+                    val = abs(result.corridor_dp_below[ff_idx]) if ff_idx < len(result.corridor_dp_below) else 0
+                    corridor_below_by_level[lvl_idx] = max(corridor_below_by_level[lvl_idx], val)
+                # This level is "above" the fire floor
+                if lvl_index == ff_level + 1:
+                    val = abs(result.corridor_dp_above[ff_idx]) if ff_idx < len(result.corridor_dp_above) else 0
+                    corridor_above_by_level[lvl_idx] = max(corridor_above_by_level[lvl_idx], val)
+
         rows = []
         for lvl_idx in range(num_levels):
             row = [levels[lvl_idx]]
 
-            # Corridor dP: max across fire floors for this level
-            # (corridor data is per fire-floor, not per path-level)
-            if lvl_idx < len(result.corridor_dp_below):
-                row.append(pa_to_inwc(float(np.max(np.abs(result.corridor_dp_below)))))
-                row.append(pa_to_inwc(float(np.max(np.abs(result.corridor_dp_above)))))
-            else:
-                row.extend([0.0, 0.0])
+            # Corridor dP for this specific level (mapped from fire floor adjacency)
+            row.append(pa_to_inwc(float(corridor_below_by_level[lvl_idx])))
+            row.append(pa_to_inwc(float(corridor_above_by_level[lvl_idx])))
 
             # Stair S2V: max across fire floors for this path level
             for s in stairs:
@@ -601,9 +614,12 @@ class AnalysisEngine:
 
         stairs = result.stair_labels
 
+        level_indices = [lvl.index for lvl in model.levels]
+
         # Build per-fire-floor tables
         tables = {}
         for ff_idx, ff_name in enumerate(fire_floor_names):
+            ff_level = fire_floors[ff_idx]
             columns = ["Level"]
             columns.extend(["dP_Corridor_Below", "dP_Corridor_Above"])
             for s in stairs:
@@ -616,13 +632,18 @@ class AnalysisEngine:
             rows = []
             for lvl_idx in range(len(levels)):
                 row = [levels[lvl_idx]]
+                lvl_index = level_indices[lvl_idx]
 
-                # Corridor dP for this fire floor
+                # Corridor dP: only show on levels adjacent to this fire floor
+                dp_below = 0.0
+                dp_above = 0.0
                 if ff_idx < len(result.corridor_dp_below):
-                    row.append(pa_to_inwc(float(abs(result.corridor_dp_below[ff_idx]))))
-                    row.append(pa_to_inwc(float(abs(result.corridor_dp_above[ff_idx]))))
-                else:
-                    row.extend([0.0, 0.0])
+                    if lvl_index == ff_level - 1:
+                        dp_below = pa_to_inwc(float(abs(result.corridor_dp_below[ff_idx])))
+                    if lvl_index == ff_level + 1:
+                        dp_above = pa_to_inwc(float(abs(result.corridor_dp_above[ff_idx])))
+                row.append(dp_below)
+                row.append(dp_above)
 
                 for s in stairs:
                     if s in result.stair_dp and lvl_idx < result.stair_dp[s].shape[0]:

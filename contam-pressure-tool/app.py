@@ -546,39 +546,11 @@ async def cancel_analysis():
     return {"status": "no_analysis_running"}
 
 
-@app.get("/api/results/{scenario}")
-async def get_results(scenario: str):
-    if not analysis_engine or not analysis_engine.results:
-        raise HTTPException(404, "No results available")
-
-    for result in analysis_engine.results:
-        if result.scenario_name == scenario:
-            if result.output_table is not None:
-                df = result.output_table
-                return {
-                    "scenario": scenario,
-                    "columns": df.columns.tolist(),
-                    "data": df.replace({np.nan: None}).values.tolist(),
-                }
-    raise HTTPException(404, f"Results for scenario '{scenario}' not found")
-
-
 @app.get("/api/results/summary")
 async def get_results_summary():
     if not analysis_engine:
         raise HTTPException(404, "No results available")
     return analysis_engine.get_results_summary()
-
-
-@app.get("/api/results/{scenario}/detailed")
-async def get_detailed_results(scenario: str):
-    """Get per-fire-floor detailed results for a scenario."""
-    if not analysis_engine or not analysis_engine.results:
-        raise HTTPException(404, "No results available")
-    detailed = analysis_engine.get_detailed_results(scenario)
-    if detailed is None:
-        raise HTTPException(404, f"Detailed results for '{scenario}' not found")
-    return detailed
 
 
 @app.get("/api/results/export/csv")
@@ -688,8 +660,38 @@ async def export_report():
         model_info=model_info,
     )
 
-    from fastapi.responses import HTMLResponse
     return HTMLResponse(content=html)
+
+
+# ---------------------------------------------------------------------------
+# Per-scenario results (dynamic path — must come AFTER static /api/results/* routes)
+# ---------------------------------------------------------------------------
+@app.get("/api/results/{scenario}/detailed")
+async def get_detailed_results(scenario: str):
+    """Get per-fire-floor detailed results for a scenario."""
+    if not analysis_engine or not analysis_engine.results:
+        raise HTTPException(404, "No results available")
+    detailed = analysis_engine.get_detailed_results(scenario)
+    if detailed is None:
+        raise HTTPException(404, f"Detailed results for '{scenario}' not found")
+    return detailed
+
+
+@app.get("/api/results/{scenario}")
+async def get_results(scenario: str):
+    if not analysis_engine or not analysis_engine.results:
+        raise HTTPException(404, "No results available")
+
+    for result in analysis_engine.results:
+        if result.scenario_name == scenario:
+            if result.output_table is not None:
+                df = result.output_table
+                return {
+                    "scenario": scenario,
+                    "columns": df.columns.tolist(),
+                    "data": df.replace({np.nan: None}).values.tolist(),
+                }
+    raise HTTPException(404, f"Results for scenario '{scenario}' not found")
 
 
 # ---------------------------------------------------------------------------

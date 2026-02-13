@@ -3,10 +3,16 @@
 Produces a self-contained HTML file suitable for printing to PDF.
 """
 import datetime
+import html as html_module
 from pathlib import Path
 from typing import List, Optional
 
 from .units import pa_to_inwc
+
+
+def _esc(text) -> str:
+    """Escape text for safe HTML insertion."""
+    return html_module.escape(str(text)) if text else ""
 
 
 def generate_report_html(
@@ -41,10 +47,10 @@ def generate_report_html(
     for s in scenarios:
         scenario_rows += f"""
             <tr>
-                <td>{s.get('name','')}</td>
-                <td>{s.get('temp_f','')}&deg;F</td>
-                <td>{s.get('wind_mph',0)} mph</td>
-                <td>{s.get('wind_dir',270)}&deg;</td>
+                <td>{_esc(s.get('name',''))}</td>
+                <td>{_esc(s.get('temp_f',''))}&deg;F</td>
+                <td>{_esc(s.get('wind_mph',0))} mph</td>
+                <td>{_esc(s.get('wind_dir',270))}&deg;</td>
             </tr>"""
 
     # Build stair config summary
@@ -61,10 +67,10 @@ def generate_report_html(
             flow_str = "0"
         stair_summary += f"""
             <tr>
-                <td>{st.get('label','')}</td>
+                <td>{_esc(st.get('label',''))}</td>
                 <td>{len(levels)}</td>
                 <td>{len(active_levels)}</td>
-                <td>{flow_str} SCFM</td>
+                <td>{_esc(flow_str)} SCFM</td>
             </tr>"""
 
     # Build corridor config summary
@@ -76,10 +82,10 @@ def generate_report_html(
         flow_str = f"{min(flow_rates)}" if flow_rates and min(flow_rates) == max(flow_rates) else (f"{min(flow_rates)}-{max(flow_rates)}" if flow_rates else "0")
         corridor_summary += f"""
             <tr>
-                <td>{cr.get('label','')}</td>
+                <td>{_esc(cr.get('label',''))}</td>
                 <td>{len(levels)}</td>
                 <td>{len(active)}</td>
-                <td>{flow_str} SCFM</td>
+                <td>{_esc(flow_str)} SCFM</td>
             </tr>"""
 
     # Model info section
@@ -89,11 +95,11 @@ def generate_report_html(
         <div class="section">
             <h2>Model Information</h2>
             <table class="info-table">
-                <tr><td class="label">PRJ File:</td><td>{model_info.get('filename','')}</td></tr>
-                <tr><td class="label">Levels:</td><td>{model_info.get('num_levels','')}</td></tr>
-                <tr><td class="label">Zones:</td><td>{model_info.get('num_zones','')}</td></tr>
-                <tr><td class="label">Airflow Paths:</td><td>{model_info.get('num_paths','')}</td></tr>
-                <tr><td class="label">AHS Systems:</td><td>{model_info.get('num_ahs','')}</td></tr>
+                <tr><td class="label">PRJ File:</td><td>{_esc(model_info.get('filename',''))}</td></tr>
+                <tr><td class="label">Levels:</td><td>{_esc(model_info.get('num_levels',''))}</td></tr>
+                <tr><td class="label">Zones:</td><td>{_esc(model_info.get('num_zones',''))}</td></tr>
+                <tr><td class="label">Airflow Paths:</td><td>{_esc(model_info.get('num_paths',''))}</td></tr>
+                <tr><td class="label">AHS Systems:</td><td>{_esc(model_info.get('num_ahs',''))}</td></tr>
             </table>
         </div>"""
 
@@ -110,18 +116,18 @@ def generate_report_html(
         fail_cells = 0
         warn_cells = 0
 
-        header_row = "".join(f"<th>{c}</th>" for c in columns)
+        header_row = "".join(f"<th>{_esc(c)}</th>" for c in columns)
         body_rows = ""
         for row in data:
             cells = ""
             for ci, val in enumerate(row):
                 if ci == 0:
-                    cells += f'<td class="level-cell">{val}</td>'
+                    cells += f'<td class="level-cell">{_esc(val)}</td>'
                     continue
                 try:
                     num = float(val)
                 except (ValueError, TypeError):
-                    cells += f"<td>{val if val else ''}</td>"
+                    cells += f"<td>{_esc(val) if val else ''}</td>"
                     continue
                 if num == 0:
                     cells += "<td>-</td>"
@@ -154,7 +160,7 @@ def generate_report_html(
 
         results_html += f"""
         <div class="section results-section">
-            <h2>Results: {scenario_name}</h2>
+            <h2>Results: {_esc(scenario_name)}</h2>
             <div class="summary-line">{badge}</div>
             <table class="results-table">
                 <thead><tr>{header_row}</tr></thead>
@@ -167,7 +173,7 @@ def generate_report_html(
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Stairwell Pressurization Report — {project_name}</title>
+    <title>Stairwell Pressurization Report — {_esc(project_name)}</title>
     <style>
         @page {{
             size: landscape;
@@ -344,7 +350,7 @@ def generate_report_html(
     <div class="report-header">
         <div>
             <h1>Stairwell Pressurization Analysis Report</h1>
-            <div class="subtitle">{project_name}</div>
+            <div class="subtitle">{_esc(project_name)}</div>
         </div>
         <div class="meta">
             <div>Generated: {now}</div>
