@@ -509,6 +509,79 @@ const App = (() => {
         });
     }
 
+    function updateFloorTabs() {
+        const n = parseInt(document.getElementById('num-floors').value) || 0;
+        const tabsEl = document.getElementById('floor-tabs');
+        const panelsEl = document.getElementById('floor-panels');
+
+        tabsEl.innerHTML = '';
+        panelsEl.innerHTML = '';
+        for (let i = 0; i < n; i++) {
+            const label = `Floor Zone ${i + 1}`;
+            tabsEl.innerHTML += `<button class="sub-tab ${i === 0 ? 'active' : ''}" data-subtab="floor-panel-${i}">${label}</button>`;
+
+            let tableRows = '';
+            modelData.levels.forEach(lvl => {
+                tableRows += `<tr>
+                    <td>${lvl.name}</td>
+                    <td>${makeZoneSelect(`floor-${i}-zone-${lvl.index}`, lvl.index)}</td>
+                    <td><input type="number" id="floor-${i}-flow-${lvl.index}" value="0" min="0" step="100"></td>
+                    <td>${makeAHSSelect(`floor-${i}-ahs-${lvl.index}`)}</td>
+                    <td><input type="number" id="floor-${i}-icon-${lvl.index}" value="129" min="0"></td>
+                    <td><input type="number" id="floor-${i}-col-${lvl.index}" value="1" min="0"></td>
+                    <td><input type="number" id="floor-${i}-row-${lvl.index}" value="1" min="0"></td>
+                </tr>`;
+            });
+
+            panelsEl.innerHTML += `
+                <div id="floor-panel-${i}" class="sub-panel ${i === 0 ? 'active' : ''}">
+                    <div class="btn-row" style="margin-bottom:0.5rem;">
+                        <button class="btn btn-sm" onclick="App.autoPopulateFloor(${i})">Auto-Populate by Zone Name</button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead><tr><th>Level</th><th>Zone</th><th>Flow Rate (SCFM)</th><th>AHS</th><th>Icon Type</th><th>Col</th><th>Row</th></tr></thead>
+                            <tbody>${tableRows}</tbody>
+                        </table>
+                    </div>
+                </div>`;
+        }
+
+        tabsEl.querySelectorAll('.sub-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabsEl.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                panelsEl.querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+                const panel = document.getElementById(btn.dataset.subtab);
+                if (panel) panel.classList.add('active');
+            });
+        });
+    }
+
+    function autoPopulateFloor(floorIdx) {
+        let selectedName = null;
+        for (const lvl of modelData.levels) {
+            const sel = document.getElementById(`floor-${floorIdx}-zone-${lvl.index}`);
+            if (sel && parseInt(sel.value) > 0) {
+                const zone = allZones.find(z => z.id === parseInt(sel.value));
+                if (zone) { selectedName = zone.name; break; }
+            }
+        }
+        if (!selectedName) {
+            selectedName = prompt('Enter floor zone name (e.g., "Floor", "Office"):');
+            if (!selectedName) return;
+        }
+        const nameLower = selectedName.toLowerCase();
+        modelData.levels.forEach(lvl => {
+            const match = allZones.find(z => z.name.toLowerCase() === nameLower && z.level_num === lvl.index)
+                       || allZones.find(z => z.name === selectedName && z.level_num === lvl.index);
+            if (match) {
+                const sel = document.getElementById(`floor-${floorIdx}-zone-${lvl.index}`);
+                if (sel) sel.value = match.id;
+            }
+        });
+    }
+
     function updateRoofTable() {
         const n = parseInt(document.getElementById('num-stairs').value) || 1;
         const tbody = document.getElementById('roof-body');
@@ -808,6 +881,33 @@ const App = (() => {
         }
         console.log(`[AutoConfig] Corridor zones: ${corrZonesSet} set, ${corrZonesMissed} missed (AHS=RETURN/EXHAUST)`);
 
+        // 4b. Populate floor zone selections and AHS (EXHAUST/RETURN at all floor levels)
+        if (sg.floor_zones && sg.floor_zones.length > 0) {
+            document.getElementById('num-floors').value = sg.floor_zones.length;
+            updateFloorTabs();
+
+            for (let i = 0; i < sg.floor_zones.length; i++) {
+                const floorZone = sg.floor_zones[i];
+                const floorAhsId = floorZone.ahs_id || (sg.return_ahs ? sg.return_ahs.id : 0);
+
+                for (const zoneInfo of floorZone.zones) {
+                    const zoneSel = document.getElementById(`floor-${i}-zone-${zoneInfo.level_num}`);
+                    if (zoneSel) {
+                        if (setSelectByZone(zoneSel, zoneInfo)) {
+                            // Set default floor zone flow rate of 600 SCFM
+                            const flowEl = document.getElementById(`floor-${i}-flow-${zoneInfo.level_num}`);
+                            if (flowEl) flowEl.value = 600;
+                        }
+                    }
+
+                    // Assign EXHAUST/RETURN AHS at every floor zone level
+                    const ahsSel = document.getElementById(`floor-${i}-ahs-${zoneInfo.level_num}`);
+                    if (ahsSel && floorAhsId) ahsSel.value = floorAhsId;
+                }
+            }
+            console.log(`[AutoConfig] Floor zones: ${sg.floor_zones.length} groups populated (AHS=RETURN/EXHAUST)`);
+        }
+
         // 5. Populate roof table and path selection
         updateRoofTable();
         updatePathSelection();
@@ -1012,6 +1112,34 @@ const App = (() => {
             });
         }
 
+        // Floor zones
+        const numFloors = parseInt(document.getElementById('num-floors').value) || 0;
+        const floorZones = [];
+        for (let i = 0; i < numFloors; i++) {
+            const levels = [];
+            modelData.levels.forEach(lvl => {
+                const zoneId = parseInt(document.getElementById(`floor-${i}-zone-${lvl.index}`)?.value || 0);
+                const flowRate = parseFloat(document.getElementById(`floor-${i}-flow-${lvl.index}`)?.value || 0);
+                const ahsId = parseInt(document.getElementById(`floor-${i}-ahs-${lvl.index}`)?.value || 0);
+                const ahs = modelData.ahs.find(a => a.id === ahsId);
+                levels.push({
+                    level_num: lvl.index,
+                    zone_id: zoneId,
+                    flow_rate: flowRate,
+                    ahs_id: ahsId,
+                    exhaust_zone: ahs ? ahs.return_zone : 0,
+                    icon_type: parseInt(document.getElementById(`floor-${i}-icon-${lvl.index}`)?.value || 129),
+                    icon_col: parseInt(document.getElementById(`floor-${i}-col-${lvl.index}`)?.value || 1),
+                    icon_row: parseInt(document.getElementById(`floor-${i}-row-${lvl.index}`)?.value || 1),
+                });
+            });
+            floorZones.push({
+                label: `Floor_${i + 1}`,
+                levels,
+                path_name: document.getElementById('corridor-path-name')?.value || '',
+            });
+        }
+
         // Roof configs
         const roofConfigs = [];
         for (let i = 0; i < numStairs; i++) {
@@ -1049,6 +1177,7 @@ const App = (() => {
             scenarios: scenarioConfigs,
             stairs,
             corridors,
+            floor_zones: floorZones,
             roof_configs: roofConfigs,
             acceptance_criteria: {
                 min_dp_inwc: parseFloat(document.getElementById('min-dp')?.value || 0.05),
@@ -1515,8 +1644,10 @@ const App = (() => {
         filterPaths,
         updateStairTabs,
         updateCorridorTabs,
+        updateFloorTabs,
         autoPopulateStair,
         autoPopulateCorridor,
+        autoPopulateFloor,
         applySuggestions,
         togglePanel,
         addScenario: () => addScenario(`Scenario_${scenarios.length + 1}`, '', 70, 0, 270),

@@ -658,6 +658,61 @@ def _detect_corridor_zone_groups(model: ParsedModel) -> List[dict]:
     return results
 
 
+def _detect_floor_zone_groups(model: ParsedModel, corridor_groups: List[dict]) -> List[dict]:
+    """Detect floor zone groups by finding zone names with floor keywords.
+
+    Excludes zones already identified as corridors. Looks for names like
+    'Floor', 'Flr', 'Level', 'Office', 'Space', etc.
+    """
+    # Collect zone IDs already claimed by corridors
+    corridor_zone_ids = set()
+    for cg in corridor_groups:
+        for z in cg["zones"]:
+            corridor_zone_ids.add(z["zone_id"])
+
+    floor_keywords = re.compile(
+        r"(?i)(floor|flr|office|space|apt|unit|suite|tenant)"
+    )
+    # Exclude stair/vestibule/corridor/ambient zones
+    exclude_keywords = re.compile(
+        r"(?i)(stair|vest|corr|hallway|lobby|ambient|shaft|elev|mech|roof|attic|plenum)"
+    )
+
+    key_groups: dict[str, dict] = {}
+    for z in model.zones:
+        if z.id in corridor_zone_ids:
+            continue
+        if exclude_keywords.search(z.name):
+            continue
+        if floor_keywords.search(z.name):
+            key = z.name.lower()
+            if key not in key_groups:
+                key_groups[key] = {"names": {}, "zones": []}
+            key_groups[key]["names"][z.name] = key_groups[key]["names"].get(z.name, 0) + 1
+            key_groups[key]["zones"].append(z)
+
+    results = []
+    for key in sorted(key_groups.keys()):
+        group = key_groups[key]
+        zones = group["zones"]
+        if len(zones) >= 2:
+            canonical = max(group["names"], key=group["names"].get)
+            results.append({
+                "name": canonical,
+                "zones": [
+                    {
+                        "zone_id": z.id,
+                        "zone_name": z.name,
+                        "level_num": z.level_num,
+                        "level_name": z.level_name,
+                        "volume": z.volume,
+                    }
+                    for z in sorted(zones, key=lambda zz: zz.level_num)
+                ],
+            })
+    return results
+
+
 def _detect_vestibule_zones(model: ParsedModel, stair_groups: List[dict]) -> dict:
     """Detect vestibule zones associated with each stair.
 
@@ -938,6 +993,7 @@ def auto_detect_config(model: ParsedModel) -> dict:
     """
     stair_groups = _detect_stair_zone_groups(model)
     corridor_groups = _detect_corridor_zone_groups(model)
+    floor_zone_groups = _detect_floor_zone_groups(model, corridor_groups)
     supply_ahs = _detect_supply_ahs(model)
     return_ahs = _detect_return_ahs(model)
     corr_path = _detect_corridor_path_element(model)
@@ -987,6 +1043,21 @@ def auto_detect_config(model: ParsedModel) -> dict:
             "ahs_id": corr_ahs_id,
         })
 
+    # Build floor zone suggestions
+    floor_zones = []
+    for i, fg in enumerate(floor_zone_groups):
+        floor_ahs_id = _detect_ahs_for_corridor(model, fg["zones"])
+        if floor_ahs_id is None and return_ahs:
+            floor_ahs_id = return_ahs.id
+
+        floor_zones.append({
+            "label": f"Floor_{i + 1}",
+            "zone_name": fg["name"],
+            "zones": fg["zones"],
+            "path_name": corr_path,
+            "ahs_id": floor_ahs_id,
+        })
+
     # Roof configs
     roof_configs = []
     for stair in stairs:
@@ -1028,10 +1099,14 @@ def auto_detect_config(model: ParsedModel) -> dict:
         if c["path_name"]:
             detail += f", path={c['path_name']}"
         detection_details.append(detail)
+    for fz in floor_zones:
+        detail = f"Floor zone '{fz['zone_name']}': {len(fz['zones'])} levels"
+        detection_details.append(detail)
 
     return {
         "stairs": stairs,
         "corridors": corridors,
+        "floor_zones": floor_zones,
         "supply_ahs": {"id": supply_ahs.id, "name": supply_ahs.name} if supply_ahs else None,
         "return_ahs": {"id": return_ahs.id, "name": return_ahs.name} if return_ahs else None,
         "corridor_path_element": corr_path,
@@ -1042,8 +1117,10 @@ def auto_detect_config(model: ParsedModel) -> dict:
         "summary": {
             "stairs_detected": len(stairs),
             "corridors_detected": len(corridors),
+            "floor_zones_detected": len(floor_zones),
             "vestibules_detected": sum(len(s["vestibules"]) for s in stairs),
             "stair_names": [s["label"] for s in stairs],
             "corridor_names": [c["zone_name"] for c in corridors],
+            "floor_zone_names": [f["zone_name"] for f in floor_zones],
         },
     }

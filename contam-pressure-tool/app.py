@@ -24,6 +24,7 @@ from core.analysis_engine import (
     AnalysisConfig,
     AnalysisEngine,
     CorridorConfig,
+    FloorConfig,
     RoofConfig,
     ScenarioConfig,
     StairConfig,
@@ -809,6 +810,15 @@ def _build_analysis_config(body: dict) -> AnalysisConfig:
         for r in body.get("roof_configs", [])
     ]
 
+    floor_zones = [
+        FloorConfig(
+            label=f.get("label", f"Floor_{i+1}"),
+            levels=f.get("levels", []),
+            path_name=f.get("path_name", ""),
+        )
+        for i, f in enumerate(body.get("floor_zones", []))
+    ]
+
     return AnalysisConfig(
         project_name=body.get("project_name", ""),
         project_folder=body.get("project_folder", ""),
@@ -817,6 +827,7 @@ def _build_analysis_config(body: dict) -> AnalysisConfig:
         stairs=stairs,
         corridors=corridors,
         roof_configs=roof_configs,
+        floor_zones=floor_zones,
         acceptance_criteria=body.get("acceptance_criteria", {
             "min_dp_inwc": 0.05,
             "max_dp_inwc": 0.45,

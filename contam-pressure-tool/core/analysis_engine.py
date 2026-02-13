@@ -68,6 +68,14 @@ class RoofConfig:
 
 
 @dataclass
+class FloorConfig:
+    """Floor zone depressurization config (same structure as CorridorConfig)."""
+    label: str
+    levels: List[dict]  # Each: {level_num, zone_id, flow_rate, ahs_id, exhaust_zone, icon_type, icon_col, icon_row}
+    path_name: str  # e.g., "FLR.LK.Measured"
+
+
+@dataclass
 class AnalysisConfig:
     project_name: str
     project_folder: str
@@ -76,6 +84,7 @@ class AnalysisConfig:
     stairs: List[StairConfig]
     corridors: List[CorridorConfig]
     roof_configs: List[RoofConfig]
+    floor_zones: List[FloorConfig] = field(default_factory=list)
     acceptance_criteria: dict = field(default_factory=lambda: {
         "min_dp_inwc": 0.05,
         "max_dp_inwc": 0.45,
@@ -119,10 +128,12 @@ class AnalysisEngine:
             cb({"message": message, "current": current, "total": total})
 
     def get_fire_floor_levels(self) -> List[int]:
-        """Get the list of fire floor level numbers from corridor configs."""
+        """Get the list of fire floor level numbers from corridor AND floor zone configs."""
         levels = []
-        for corr in self.config.corridors:
-            for le in corr.levels:
+        # Include both corridors and floor zones as depressurization targets
+        depress_configs = list(self.config.corridors) + list(self.config.floor_zones)
+        for cfg in depress_configs:
+            for le in cfg.levels:
                 if le.get("flow_rate", 0) > 0 and le.get("zone_id", 0) != 0:
                     if le["level_num"] not in levels:
                         levels.append(le["level_num"])
@@ -173,7 +184,7 @@ class AnalysisEngine:
         fire_floors = self.get_fire_floor_levels()
         if not fire_floors:
             errors.append(
-                "No fire floor levels found. Ensure corridor configs "
+                "No fire floor levels found. Ensure corridor or floor zone configs "
                 "have non-zero flow rates."
             )
 
@@ -199,6 +210,12 @@ class AnalysisEngine:
                 if self._cancelled:
                     break
 
+                # Combine corridor and floor zone configs for depressurization
+                all_depress_configs = (
+                    [{"label": c.label, "levels": c.levels} for c in self.config.corridors]
+                    + [{"label": f.label, "levels": f.levels} for f in self.config.floor_zones]
+                )
+
                 modified = build_modified_prj(
                     base_lines=model.raw_lines,
                     temp_f=scenario.temp_f,
@@ -208,10 +225,7 @@ class AnalysisEngine:
                         {"label": s.label, "levels": s.levels}
                         for s in self.config.stairs
                     ],
-                    corridor_configs=[
-                        {"label": c.label, "levels": c.levels}
-                        for c in self.config.corridors
-                    ],
+                    corridor_configs=all_depress_configs,
                     roof_configs=[
                         {
                             "zone_id": r.zone_id,
@@ -333,6 +347,12 @@ class AnalysisEngine:
                 )
 
                 # Build modified PRJ
+                # Combine corridor and floor zone configs for depressurization
+                all_depress_configs = (
+                    [{"label": c.label, "levels": c.levels} for c in self.config.corridors]
+                    + [{"label": f.label, "levels": f.levels} for f in self.config.floor_zones]
+                )
+
                 modified = build_modified_prj(
                     base_lines=model.raw_lines,
                     temp_f=scenario.temp_f,
@@ -342,10 +362,7 @@ class AnalysisEngine:
                         {"label": s.label, "levels": s.levels}
                         for s in self.config.stairs
                     ],
-                    corridor_configs=[
-                        {"label": c.label, "levels": c.levels}
-                        for c in self.config.corridors
-                    ],
+                    corridor_configs=all_depress_configs,
                     roof_configs=[
                         {
                             "zone_id": r.zone_id,
