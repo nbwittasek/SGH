@@ -877,8 +877,11 @@ const App = (() => {
                 if (zoneSel) {
                     if (setSelectByZone(zoneSel, zoneInfo)) {
                         corrZonesSet++;
+                        // Corridor does NOT get exhaust — the floor zone handles
+                        // depressurization. Corridor dP is measured via V2C paths
+                        // but no exhaust fan is imposed on the corridor itself.
                         const flowEl = document.getElementById(`corr-${i}-flow-${zoneInfo.level_num}`);
-                        if (flowEl) flowEl.value = 600;
+                        if (flowEl) flowEl.value = 0;
                     } else {
                         corrZonesMissed++;
                     }
@@ -889,12 +892,12 @@ const App = (() => {
         }
         console.log(`[AutoConfig] Corridor zones: ${corrZonesSet} set, ${corrZonesMissed} missed (levels: ${[...levelsWithCorridor].sort((a,b)=>a-b).join(',')})`);
 
-        // Populate floor zones — zones + AHS everywhere, but flow only on levels WITHOUT a corridor
+        // Populate floor zones — zones + AHS + exhaust flow on all levels
         if (sg.floor_zones && sg.floor_zones.length > 0) {
             document.getElementById('num-floors').value = sg.floor_zones.length;
             updateFloorTabs();
 
-            let floorActive = 0, floorSkipped = 0;
+            let floorActive = 0;
             for (let i = 0; i < sg.floor_zones.length; i++) {
                 const floorZone = sg.floor_zones[i];
                 const floorAhsId = floorZone.ahs_id || (sg.return_ahs ? sg.return_ahs.id : 0);
@@ -909,20 +912,17 @@ const App = (() => {
                     const ahsSel = document.getElementById(`floor-${i}-ahs-${zoneInfo.level_num}`);
                     if (ahsSel && floorAhsId) ahsSel.value = floorAhsId;
 
-                    // Flow rate: only on levels that DON'T have a corridor
+                    // Floor zone is the exhaust/depressurization target on ALL
+                    // levels. The corridor does NOT get its own exhaust —
+                    // it depressurizes naturally via leakage to the floor zone.
                     const flowEl = document.getElementById(`floor-${i}-flow-${zoneInfo.level_num}`);
                     if (flowEl) {
-                        if (levelsWithCorridor.has(zoneInfo.level_num)) {
-                            flowEl.value = 0; // corridor handles this level
-                            floorSkipped++;
-                        } else {
-                            flowEl.value = 600; // no corridor — floor zone handles it
-                            floorActive++;
-                        }
+                        flowEl.value = 600;
+                        floorActive++;
                     }
                 }
             }
-            console.log(`[AutoConfig] Floor zones: ${sg.floor_zones.length} groups, ${floorActive} levels active, ${floorSkipped} levels skipped (corridor present)`);
+            console.log(`[AutoConfig] Floor zones: ${sg.floor_zones.length} groups, ${floorActive} levels active (exhaust target)`);
         }
 
         // 5. Populate roof table and path selection
