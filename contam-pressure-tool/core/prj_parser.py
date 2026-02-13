@@ -568,10 +568,11 @@ def _detect_stair_zone_groups(model: ParsedModel) -> List[dict]:
     )
     # Exclude vestibule patterns:
     #   _v or -v at end, vest anywhere, _v word boundary, _v/,
-    #   ST#_v, Stair2V_L3, Stair2V2_L3, etc.
+    #   ST#_v, Stair2V_L3, Stair2V2_L3, ST4.VEST, ST6.Vest, etc.
     vestibule_exclude = re.compile(
         r"(?i)([_\-]v$|vest|_v\b|_v/|^st\d*[_\-]?v$|v/l\d"
-        r"|(?:stair|stwr|st)\d*v\d*[_\-])"
+        r"|(?:stair|stwr|st)\d*v\d*[_\-]"
+        r"|(?:stair|stwr|st)\d*\.v)"
     )
 
     # Group zones by normalized key
@@ -615,21 +616,34 @@ def _detect_stair_zone_groups(model: ParsedModel) -> List[dict]:
 
 
 def _detect_corridor_zone_groups(model: ParsedModel) -> List[dict]:
-    """Detect corridor zone groups by finding zone names with corridor keywords."""
+    """Detect corridor zone groups by finding zone names with corridor keywords.
+
+    Uses case-insensitive grouping so 'Corridor' and 'corridor' merge into
+    one group.  The most common spelling is used as the canonical name.
+    """
     corr_keywords = re.compile(
         r"(?i)(corridor|corr|hallway|lobby)"
     )
 
-    name_groups: dict[str, List[Zone]] = {}
+    # Group by lowercased name so case variants merge
+    key_groups: dict[str, dict] = {}
     for z in model.zones:
         if corr_keywords.search(z.name):
-            name_groups.setdefault(z.name, []).append(z)
+            key = z.name.lower()
+            if key not in key_groups:
+                key_groups[key] = {"names": {}, "zones": []}
+            key_groups[key]["names"][z.name] = key_groups[key]["names"].get(z.name, 0) + 1
+            key_groups[key]["zones"].append(z)
 
     results = []
-    for name, zones in sorted(name_groups.items()):
+    for key in sorted(key_groups.keys()):
+        group = key_groups[key]
+        zones = group["zones"]
         if len(zones) >= 2:
+            # Use the most common spelling as the canonical name
+            canonical = max(group["names"], key=group["names"].get)
             results.append({
-                "name": name,
+                "name": canonical,
                 "zones": [
                     {
                         "zone_id": z.id,
@@ -663,12 +677,13 @@ def _detect_vestibule_zones(model: ParsedModel, stair_groups: List[dict]) -> dic
     vest_results: dict[str, List[dict]] = {sg["normalized_key"]: [] for sg in stair_groups}
 
     # Pattern 1: Name-based vestibule detection
+    # Matches: ST1_v, ST2_V, Stair1_V, Stair3_V, ST4.VEST, ST6.Vest
     vest_pattern = re.compile(
-        r"(?i)(st|stair|stwr)[\-_]?(\d+)[\-_]?(v|vest|vestibule)"
+        r"(?i)(st|stair|stwr)[\-_.]?(\d+)[\-_.]?(v|vest|vestibule)"
     )
-    # Also match patterns like "Stair2V/L43"
+    # Also match patterns like "Stair2V/L43", "Stair2V_L3"
     vest_pattern2 = re.compile(
-        r"(?i)(stair|st|stwr)[\-_]?(\d+)\s*v"
+        r"(?i)(stair|st|stwr)[\-_.]?(\d+)\s*v"
     )
 
     for z in model.zones:
@@ -755,7 +770,7 @@ def _detect_path_elements_for_stair(
         num = m.group(1)
         variants.add(f"stair{num}")
 
-    result = {"s2v": "", "v2c": "", "ext": "", "s2v2": "", "v2c2": ""}
+    result = {"s2v": "", "v2c": "", "ext": "", "s2v2": "", "v2c2": "", "s2c": ""}
 
     path_patterns = {
         "s2v": re.compile(r"(?i)s2v(?!2)"),
@@ -763,6 +778,7 @@ def _detect_path_elements_for_stair(
         "ext": re.compile(r"(?i)(ext|exterior)"),
         "s2v2": re.compile(r"(?i)s2v2"),
         "v2c2": re.compile(r"(?i)v2c2"),
+        "s2c": re.compile(r"(?i)s2c(?!2)"),  # stair-to-corridor (no vestibule)
     }
 
     for elem in model.flow_elements:
@@ -782,7 +798,8 @@ def _detect_path_elements_for_stair(
 def _detect_corridor_path_element(model: ParsedModel) -> str:
     """Detect the corridor floor leakage flow element.
 
-    Looks for element names containing FLR, LK, Measured, floor, leak, etc.
+    Looks for element names containing FLR, LK, Measured, floor, leak,
+    FLR.AVG, FLOOR_AVE, etc.
     """
     patterns = [
         re.compile(r"(?i)flr.*lk.*measur"),
@@ -790,6 +807,8 @@ def _detect_corridor_path_element(model: ParsedModel) -> str:
         re.compile(r"(?i)flr.*measur"),
         re.compile(r"(?i)corr.*leak"),
         re.compile(r"(?i)floor.*leak"),
+        re.compile(r"(?i)flr[\._]*(avg|ave)"),
+        re.compile(r"(?i)floor[\._]*(avg|ave)"),
     ]
 
     for elem in model.flow_elements:
@@ -974,7 +993,9 @@ def auto_detect_config(model: ParsedModel) -> dict:
     has_stairs = len(stairs) > 0
     has_corridors = len(corridors) > 0
     has_ahs = supply_ahs is not None
-    has_paths = any(s["paths"]["s2v"] for s in stairs)
+    has_paths = any(
+        s["paths"]["s2v"] or s["paths"]["s2c"] for s in stairs
+    )
     has_vestibules = any(len(s["vestibules"]) > 0 for s in stairs)
     has_corr_path = bool(corr_path)
     score = sum([has_stairs, has_corridors, has_ahs, has_paths, has_vestibules, has_corr_path])
@@ -990,6 +1011,8 @@ def auto_detect_config(model: ParsedModel) -> dict:
             detail += f", S2V={s['paths']['s2v']}"
         if s["paths"]["v2c"]:
             detail += f", V2C={s['paths']['v2c']}"
+        if s["paths"]["s2c"]:
+            detail += f", S2C={s['paths']['s2c']}"
         if len(s.get("all_names", [])) > 1:
             detail += f" (name variants: {', '.join(s['all_names'])})"
         detection_details.append(detail)
