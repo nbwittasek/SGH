@@ -17,14 +17,14 @@ def find_contam_executable() -> Optional[str]:
 
     Searches:
     1. System PATH
-    2. Common install locations on Windows
+    2. Common install locations on Windows (including versioned folders)
     """
     # Check PATH first
     found = shutil.which("contamX3") or shutil.which("contamX3.exe")
     if found:
         return str(Path(found).resolve())
 
-    # Common Windows install locations
+    # Common Windows install locations (exact paths)
     common_paths = [
         Path("C:/Program Files/NIST/CONTAM/contamX3.exe"),
         Path("C:/Program Files (x86)/NIST/CONTAM/contamX3.exe"),
@@ -35,6 +35,19 @@ def find_contam_executable() -> Optional[str]:
     for p in common_paths:
         if p.exists():
             return str(p.resolve())
+
+    # Scan NIST directories for versioned CONTAM folders (e.g. CONTAM 3.4.0.8)
+    nist_dirs = [
+        Path("C:/Program Files/NIST"),
+        Path("C:/Program Files (x86)/NIST"),
+    ]
+    for nist_dir in nist_dirs:
+        if nist_dir.is_dir():
+            for child in nist_dir.iterdir():
+                if child.is_dir() and child.name.upper().startswith("CONTAM"):
+                    exe = child / "contamX3.exe"
+                    if exe.exists():
+                        return str(exe.resolve())
 
     return None
 
