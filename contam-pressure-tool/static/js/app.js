@@ -140,11 +140,24 @@ const App = (() => {
             await Promise.all([loadLevels(), loadZones(), loadAHS(), loadElements(), loadPaths()]);
             populateDropdowns();
 
-            // Fetch auto-suggestions
+            // Auto-configure: detect stairs, corridors, paths, AHS and apply automatically
             try {
-                lastSuggestions = await api('GET', `/api/model/${currentModelId}/suggestions`);
-                showSuggestionsBanner(lastSuggestions);
-            } catch (e) { /* suggestions are optional */ }
+                lastSuggestions = await api('GET', `/api/model/${currentModelId}/auto-configure`);
+                if (lastSuggestions && lastSuggestions.confidence !== 'low') {
+                    applySuggestions();
+                    showAutoConfigBanner(lastSuggestions);
+                    // Switch to Tab 3 (Pressurization Config) so user can review
+                    switchToTab('pressurization');
+                } else {
+                    showSuggestionsBanner(lastSuggestions);
+                }
+            } catch (e) {
+                // Fall back to basic suggestions
+                try {
+                    lastSuggestions = await api('GET', `/api/model/${currentModelId}/suggestions`);
+                    showSuggestionsBanner(lastSuggestions);
+                } catch (e2) { /* suggestions are optional */ }
+            }
         } catch (e) {
             showStatus('parse-status', 'Parse failed: ' + e.message, 'error');
         }
@@ -551,8 +564,59 @@ const App = (() => {
     }
 
     // ---------------------------------------------------------------------------
+    // Tab Switching Helper
+    // ---------------------------------------------------------------------------
+    function switchToTab(tabId) {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        const tab = document.querySelector(`.nav-tab[data-tab="${tabId}"]`);
+        const panel = document.getElementById(tabId);
+        if (tab) tab.classList.add('active');
+        if (panel) panel.classList.add('active');
+    }
+
+    // ---------------------------------------------------------------------------
     // Auto-Suggestions
     // ---------------------------------------------------------------------------
+    function showAutoConfigBanner(config) {
+        // Remove existing banners
+        const existing = document.getElementById('suggestions-banner');
+        if (existing) existing.remove();
+        const existingAuto = document.getElementById('auto-config-banner');
+        if (existingAuto) existingAuto.remove();
+
+        const banner = document.createElement('div');
+        banner.id = 'auto-config-banner';
+        banner.className = 'info-box';
+        banner.style.marginBottom = '1rem';
+        banner.style.borderColor = 'rgba(39,174,96,0.5)';
+        banner.style.background = 'rgba(39,174,96,0.08)';
+
+        const s = config.summary;
+        const details = (config.detection_details || []).map(d => `<li>${d}</li>`).join('');
+        const confLabel = config.confidence === 'high' ? 'High' : config.confidence === 'medium' ? 'Medium' : 'Low';
+
+        banner.innerHTML = `
+            <h3 style="color:var(--success); margin-bottom:0.5rem;">Auto-Configured from PRJ File (${confLabel} Confidence)</h3>
+            <p>The model has been automatically analyzed and the following has been pre-filled:</p>
+            <ul style="margin:0.5rem 0; padding-left:1.5rem; font-size:0.85rem;">
+                ${details}
+                ${config.supply_ahs ? `<li>Supply AHS: ${config.supply_ahs.name} (#${config.supply_ahs.id})</li>` : ''}
+                ${config.return_ahs ? `<li>Return AHS: ${config.return_ahs.name} (#${config.return_ahs.id})</li>` : ''}
+            </ul>
+            <p style="margin-top:0.75rem;"><strong>Next steps:</strong> Review the configuration below, set flow rates (SCFM) for each level, then proceed to Tab 4 (Scenarios) and Tab 5 (Run).</p>
+            <div class="btn-row" style="margin-top:0.5rem;">
+                <button class="btn btn-sm" onclick="document.getElementById('auto-config-banner').remove()">Dismiss</button>
+            </div>
+        `;
+
+        // Insert at the top of the pressurization tab
+        const pressTab = document.getElementById('pressurization');
+        if (pressTab) {
+            pressTab.insertBefore(banner, pressTab.children[1] || null);
+        }
+    }
+
     function showSuggestionsBanner(suggestions) {
         // Remove existing banner if any
         const existing = document.getElementById('suggestions-banner');
@@ -617,16 +681,30 @@ const App = (() => {
         // 3. Populate stair zone selections and AHS
         for (let i = 0; i < sg.stairs.length; i++) {
             const stair = sg.stairs[i];
-            const supplyAhsId = sg.supply_ahs ? sg.supply_ahs.id : 0;
+            // Use per-stair AHS if detected, otherwise fall back to global supply AHS
+            const stairAhsId = stair.ahs_id || (sg.supply_ahs ? sg.supply_ahs.id : 0);
 
             for (const zoneInfo of stair.zones) {
-                // Set zone dropdown
+                // Set zone dropdown — use zone_name matching as fallback
+                // since zone names may vary across levels (e.g. Stair_4 vs Stair4)
                 const zoneSel = document.getElementById(`stair-${i}-zone-${zoneInfo.level_num}`);
-                if (zoneSel) zoneSel.value = zoneInfo.zone_id;
+                if (zoneSel) {
+                    zoneSel.value = zoneInfo.zone_id;
+                    // Verify it was set (zone_id might not be in this level's dropdown)
+                    if (zoneSel.value != zoneInfo.zone_id && zoneInfo.zone_name) {
+                        // Try to find by name match in the dropdown options
+                        for (const opt of zoneSel.options) {
+                            if (opt.text.startsWith(zoneInfo.zone_name + ' ')) {
+                                zoneSel.value = opt.value;
+                                break;
+                            }
+                        }
+                    }
+                }
 
-                // Set AHS to supply
+                // Set AHS
                 const ahsSel = document.getElementById(`stair-${i}-ahs-${zoneInfo.level_num}`);
-                if (ahsSel) ahsSel.value = supplyAhsId;
+                if (ahsSel) ahsSel.value = stairAhsId;
             }
         }
         updateSupplyZones();
@@ -634,14 +712,25 @@ const App = (() => {
         // 4. Populate corridor zone selections and AHS
         for (let i = 0; i < sg.corridors.length; i++) {
             const corr = sg.corridors[i];
-            const returnAhsId = sg.return_ahs ? sg.return_ahs.id : 0;
+            // Use per-corridor AHS if detected, otherwise fall back to global return AHS
+            const corrAhsId = corr.ahs_id || (sg.return_ahs ? sg.return_ahs.id : 0);
 
             for (const zoneInfo of corr.zones) {
                 const zoneSel = document.getElementById(`corr-${i}-zone-${zoneInfo.level_num}`);
-                if (zoneSel) zoneSel.value = zoneInfo.zone_id;
+                if (zoneSel) {
+                    zoneSel.value = zoneInfo.zone_id;
+                    if (zoneSel.value != zoneInfo.zone_id && zoneInfo.zone_name) {
+                        for (const opt of zoneSel.options) {
+                            if (opt.text.startsWith(zoneInfo.zone_name + ' ')) {
+                                zoneSel.value = opt.value;
+                                break;
+                            }
+                        }
+                    }
+                }
 
                 const ahsSel = document.getElementById(`corr-${i}-ahs-${zoneInfo.level_num}`);
-                if (ahsSel) ahsSel.value = returnAhsId;
+                if (ahsSel) ahsSel.value = corrAhsId;
             }
         }
 

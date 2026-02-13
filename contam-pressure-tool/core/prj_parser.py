@@ -536,38 +536,78 @@ def get_max_path_id(model: ParsedModel) -> int:
 # Auto-detection / suggestions engine
 # ---------------------------------------------------------------------------
 
+import re
+
+
+def _normalize_stair_key(name: str) -> str:
+    """Normalize a stair zone name to a canonical key for grouping.
+
+    Handles inconsistencies like Stair_1/Stair1, Stair_4/Stair4, etc.
+    Returns a lowercase key like 'stair1', 'stair2', 'stair4'.
+    """
+    # Remove underscores, hyphens, spaces and lowercase
+    clean = name.replace("_", "").replace("-", "").replace(" ", "").lower()
+    # Extract the stair identifier: "stair" + number(s)
+    m = re.match(r"(stair|stwr|egress|exitstair)(\d+)", clean)
+    if m:
+        return f"stair{m.group(2)}"
+    return clean
+
+
 def _detect_stair_zone_groups(model: ParsedModel) -> List[dict]:
     """Detect stair zone groups by finding zone names that repeat across levels.
 
-    Looks for zone names containing common stair keywords, excluding
-    vestibule zones (e.g., ST1_v, S4_V, Stair2V).
-    Returns list of dicts: {name, zones: [{zone_id, level_num, level_name}]}
+    Uses normalized name matching to group variants like Stair_1/Stair1,
+    Stair_4/Stair4, etc. as the same logical stairwell.
+    Excludes vestibule zones (e.g., ST1_v, S4_V, Stair2V).
+    Returns list of dicts: {name, zones: [{zone_id, level_num, level_name, volume}]}
     """
-    import re
-
     # Match stair zones but NOT vestibule patterns
     stair_keywords = re.compile(
-        r"(?i)(stair|stwr|egress|exit[_\-]?stair)", re.IGNORECASE
+        r"(?i)(stair|stwr|egress|exit[_\-]?stair)"
     )
-    # Exclude vestibule patterns: ends with _v, _V, _vest, or contains vest/lobby
+    # Exclude vestibule patterns:
+    #   _v or -v at end, vest anywhere, _v word boundary, _v/,
+    #   ST#_v, Stair2V_L3, Stair2V2_L3, etc.
     vestibule_exclude = re.compile(
-        r"(?i)([_\-]v$|vest|_v\b|_v/|^st\d*[_\-]?v$)", re.IGNORECASE
+        r"(?i)([_\-]v$|vest|_v\b|_v/|^st\d*[_\-]?v$|v/l\d"
+        r"|(?:stair|stwr|st)\d*v\d*[_\-])"
     )
 
-    # Group zones by name
-    name_groups: dict[str, List[Zone]] = {}
+    # Group zones by normalized key
+    key_groups: dict[str, dict[str, any]] = {}
     for z in model.zones:
         if stair_keywords.search(z.name) and not vestibule_exclude.search(z.name):
-            name_groups.setdefault(z.name, []).append(z)
+            key = _normalize_stair_key(z.name)
+            if key not in key_groups:
+                key_groups[key] = {"names": set(), "zones": []}
+            key_groups[key]["names"].add(z.name)
+            key_groups[key]["zones"].append(z)
 
     # A stair must span at least 2 levels to be a real stair
     results = []
-    for name, zones in sorted(name_groups.items()):
+    for key in sorted(key_groups.keys()):
+        group = key_groups[key]
+        zones = group["zones"]
         if len(zones) >= 2:
+            # Use the most common name variant as the canonical label
+            name_counts: dict[str, int] = {}
+            for z in zones:
+                name_counts[z.name] = name_counts.get(z.name, 0) + 1
+            canonical_name = max(name_counts, key=name_counts.get)
+
             results.append({
-                "name": name,
+                "name": canonical_name,
+                "normalized_key": key,
+                "all_names": sorted(group["names"]),
                 "zones": [
-                    {"zone_id": z.id, "level_num": z.level_num, "level_name": z.level_name}
+                    {
+                        "zone_id": z.id,
+                        "zone_name": z.name,
+                        "level_num": z.level_num,
+                        "level_name": z.level_name,
+                        "volume": z.volume,
+                    }
                     for z in sorted(zones, key=lambda zz: zz.level_num)
                 ],
             })
@@ -576,10 +616,8 @@ def _detect_stair_zone_groups(model: ParsedModel) -> List[dict]:
 
 def _detect_corridor_zone_groups(model: ParsedModel) -> List[dict]:
     """Detect corridor zone groups by finding zone names with corridor keywords."""
-    import re
-
     corr_keywords = re.compile(
-        r"(?i)(corridor|corr|hallway|lobby)", re.IGNORECASE
+        r"(?i)(corridor|corr|hallway|lobby)"
     )
 
     name_groups: dict[str, List[Zone]] = {}
@@ -593,28 +631,129 @@ def _detect_corridor_zone_groups(model: ParsedModel) -> List[dict]:
             results.append({
                 "name": name,
                 "zones": [
-                    {"zone_id": z.id, "level_num": z.level_num, "level_name": z.level_name}
+                    {
+                        "zone_id": z.id,
+                        "zone_name": z.name,
+                        "level_num": z.level_num,
+                        "level_name": z.level_name,
+                        "volume": z.volume,
+                    }
                     for z in sorted(zones, key=lambda zz: zz.level_num)
                 ],
             })
     return results
 
 
+def _detect_vestibule_zones(model: ParsedModel, stair_groups: List[dict]) -> dict:
+    """Detect vestibule zones associated with each stair.
+
+    For each stair group, looks for vestibule zones by:
+    1. Name patterns: ST1_v, ST2_V, Stair2V/L43, etc.
+    2. Connectivity: zones connected to stair zones via S2V flow elements.
+
+    Returns: {stair_key: [{zone_id, zone_name, level_num, level_name}]}
+    """
+    # Build stair number -> stair key mapping
+    stair_num_map: dict[str, str] = {}
+    for sg in stair_groups:
+        m = re.search(r"(\d+)", sg["normalized_key"])
+        if m:
+            stair_num_map[m.group(1)] = sg["normalized_key"]
+
+    vest_results: dict[str, List[dict]] = {sg["normalized_key"]: [] for sg in stair_groups}
+
+    # Pattern 1: Name-based vestibule detection
+    vest_pattern = re.compile(
+        r"(?i)(st|stair|stwr)[\-_]?(\d+)[\-_]?(v|vest|vestibule)"
+    )
+    # Also match patterns like "Stair2V/L43"
+    vest_pattern2 = re.compile(
+        r"(?i)(stair|st|stwr)[\-_]?(\d+)\s*v"
+    )
+
+    for z in model.zones:
+        m = vest_pattern.search(z.name) or vest_pattern2.search(z.name)
+        if m:
+            stair_num = m.group(2)
+            stair_key = stair_num_map.get(stair_num)
+            if stair_key and stair_key in vest_results:
+                vest_results[stair_key].append({
+                    "zone_id": z.id,
+                    "zone_name": z.name,
+                    "level_num": z.level_num,
+                    "level_name": z.level_name,
+                })
+
+    # Pattern 2: Connectivity-based — find zones connected via S2V paths
+    for sg in stair_groups:
+        paths = _detect_path_elements_for_stair(model, sg["name"], sg.get("all_names", []))
+        s2v_elem_name = paths.get("s2v", "")
+        if not s2v_elem_name:
+            continue
+
+        elem = find_flow_element_by_name(model, s2v_elem_name)
+        if not elem:
+            continue
+
+        # Find all airflow paths using this S2V element
+        stair_zone_ids = {z["zone_id"] for z in sg["zones"]}
+        for p in model.airflow_paths:
+            if p.flow_elem_id == elem.id:
+                # S2V path connects stair to vestibule
+                # The "to" zone that is NOT a stair zone is the vestibule
+                vest_zone_id = None
+                if p.from_zone in stair_zone_ids and p.to_zone not in stair_zone_ids:
+                    vest_zone_id = p.to_zone
+                elif p.to_zone in stair_zone_ids and p.from_zone not in stair_zone_ids:
+                    vest_zone_id = p.from_zone
+
+                if vest_zone_id is not None:
+                    # Find the zone
+                    for z in model.zones:
+                        if z.id == vest_zone_id and z.level_num == p.level_num:
+                            # Avoid duplicates
+                            existing_ids = {v["zone_id"] for v in vest_results[sg["normalized_key"]]}
+                            if z.id not in existing_ids:
+                                vest_results[sg["normalized_key"]].append({
+                                    "zone_id": z.id,
+                                    "zone_name": z.name,
+                                    "level_num": z.level_num,
+                                    "level_name": z.level_name,
+                                })
+
+    # Sort by level
+    for key in vest_results:
+        vest_results[key].sort(key=lambda v: v["level_num"])
+
+    return vest_results
+
+
 def _detect_path_elements_for_stair(
-    model: ParsedModel, stair_name: str
+    model: ParsedModel, stair_name: str, all_names: List[str] = None
 ) -> dict:
     """Try to match flow element names to a stair.
 
     Looks for naming patterns like:
         Door-Stair1-S2V, Door-Stair1-V2C, Door-Stair1-EXT
         Door-Stair2S2V2, Door-Stair2V2C2
+    Handles multiple name variants (e.g., Stair_1 and Stair1).
     """
-    import re
+    # Build all normalization variants
+    names = [stair_name]
+    if all_names:
+        names.extend(all_names)
 
-    # Normalize stair name: "Stair_1" -> "Stair1", "Stair2" -> "Stair2"
-    # Try multiple normalization variants
-    clean = stair_name.replace("_", "").replace("-", "").replace(" ", "")
-    variants = [clean, stair_name, stair_name.replace("_", "")]
+    variants = set()
+    for n in names:
+        clean = n.replace("_", "").replace("-", "").replace(" ", "")
+        variants.add(clean.lower())
+        variants.add(n.lower())
+        variants.add(n.replace("_", "").lower())
+    # Also extract just the stair number to match patterns like "Door-Stair1-S2V"
+    m = re.search(r"(\d+)", stair_name)
+    if m:
+        num = m.group(1)
+        variants.add(f"stair{num}")
 
     result = {"s2v": "", "v2c": "", "ext": "", "s2v2": "", "v2c2": ""}
 
@@ -627,9 +766,9 @@ def _detect_path_elements_for_stair(
     }
 
     for elem in model.flow_elements:
-        elem_clean = elem.name.replace("_", "").replace("-", "").replace(" ", "")
-        # Check if this element name contains the stair name
-        matches_stair = any(v.lower() in elem_clean.lower() for v in variants)
+        elem_clean = elem.name.replace("_", "").replace("-", "").replace(" ", "").lower()
+        # Check if this element name contains any variant of the stair name
+        matches_stair = any(v in elem_clean for v in variants)
         if not matches_stair:
             continue
 
@@ -645,8 +784,6 @@ def _detect_corridor_path_element(model: ParsedModel) -> str:
 
     Looks for element names containing FLR, LK, Measured, floor, leak, etc.
     """
-    import re
-
     patterns = [
         re.compile(r"(?i)flr.*lk.*measur"),
         re.compile(r"(?i)floor.*leak.*measur"),
@@ -681,6 +818,39 @@ def _detect_return_ahs(model: ParsedModel) -> Optional[AHSystem]:
     # Fallback: return AHS with lowest ID
     if model.ahs_systems:
         return min(model.ahs_systems, key=lambda a: a.id)
+    return None
+
+
+def _detect_ahs_for_stair(model: ParsedModel, stair_zones: List[dict]) -> Optional[int]:
+    """Detect which AHS is connected to stair zones via airflow paths.
+
+    Traces supply paths (icon_type 128) connected to stair zones
+    and returns the AHS ID used.
+    """
+    stair_zone_ids = {z["zone_id"] for z in stair_zones}
+
+    # Look for airflow paths connected to stair zones that have an AHS
+    ahs_counts: dict[int, int] = {}
+    for p in model.airflow_paths:
+        if p.ahs > 0 and (p.from_zone in stair_zone_ids or p.to_zone in stair_zone_ids):
+            ahs_counts[p.ahs] = ahs_counts.get(p.ahs, 0) + 1
+
+    if ahs_counts:
+        return max(ahs_counts, key=ahs_counts.get)
+    return None
+
+
+def _detect_ahs_for_corridor(model: ParsedModel, corridor_zones: List[dict]) -> Optional[int]:
+    """Detect which AHS is connected to corridor zones via airflow paths."""
+    corr_zone_ids = {z["zone_id"] for z in corridor_zones}
+
+    ahs_counts: dict[int, int] = {}
+    for p in model.airflow_paths:
+        if p.ahs > 0 and (p.from_zone in corr_zone_ids or p.to_zone in corr_zone_ids):
+            ahs_counts[p.ahs] = ahs_counts.get(p.ahs, 0) + 1
+
+    if ahs_counts:
+        return max(ahs_counts, key=ahs_counts.get)
     return None
 
 
@@ -726,9 +896,14 @@ def _detect_weather_from_model(model: ParsedModel) -> dict:
 def auto_detect_config(model: ParsedModel) -> dict:
     """Analyze a parsed model and generate suggested configuration.
 
+    Performs comprehensive auto-detection of stairs, corridors, vestibules,
+    AHS assignments, flow path elements, and weather. Uses normalized name
+    matching, connectivity analysis, and volume heuristics to produce a
+    high-confidence configuration ready to apply.
+
     Returns a dict with:
-        stairs: [{label, zone_name, zones: [{zone_id, level_num}], paths: {s2v,v2c,ext,...}}]
-        corridors: [{label, zone_name, zones: [{zone_id, level_num}], path_name}]
+        stairs: [{label, zone_name, all_names, zones, vestibules, paths, roof, ahs_id}]
+        corridors: [{label, zone_name, zones, path_name, ahs_id}]
         supply_ahs: {id, name} or null
         return_ahs: {id, name} or null
         roof_configs: [{stair_label, zone_id, level_num, level_name}]
@@ -741,28 +916,49 @@ def auto_detect_config(model: ParsedModel) -> dict:
     return_ahs = _detect_return_ahs(model)
     corr_path = _detect_corridor_path_element(model)
     weather = _detect_weather_from_model(model)
+    vestibule_map = _detect_vestibule_zones(model, stair_groups)
 
     # Build stair suggestions
     stairs = []
     for sg in stair_groups:
-        paths = _detect_path_elements_for_stair(model, sg["name"])
+        paths = _detect_path_elements_for_stair(
+            model, sg["name"], sg.get("all_names", [])
+        )
         roof = _detect_roof_level_for_stair(sg["zones"], model)
+        vest_key = sg.get("normalized_key", "")
+        vestibules = vestibule_map.get(vest_key, [])
+
+        # Detect per-stair AHS via connectivity
+        stair_ahs_id = _detect_ahs_for_stair(model, sg["zones"])
+        # Fall back to global supply AHS
+        if stair_ahs_id is None and supply_ahs:
+            stair_ahs_id = supply_ahs.id
+
         stairs.append({
             "label": sg["name"],
             "zone_name": sg["name"],
+            "all_names": sg.get("all_names", [sg["name"]]),
+            "normalized_key": sg.get("normalized_key", ""),
             "zones": sg["zones"],
+            "vestibules": vestibules,
             "paths": paths,
             "roof": roof,
+            "ahs_id": stair_ahs_id,
         })
 
     # Build corridor suggestions
     corridors = []
     for i, cg in enumerate(corridor_groups):
+        corr_ahs_id = _detect_ahs_for_corridor(model, cg["zones"])
+        if corr_ahs_id is None and return_ahs:
+            corr_ahs_id = return_ahs.id
+
         corridors.append({
             "label": f"Corridor_{i + 1}",
             "zone_name": cg["name"],
             "zones": cg["zones"],
             "path_name": corr_path,
+            "ahs_id": corr_ahs_id,
         })
 
     # Roof configs
@@ -774,13 +970,34 @@ def auto_detect_config(model: ParsedModel) -> dict:
                 **stair["roof"],
             })
 
-    # Confidence scoring
+    # Confidence scoring — more signals = higher confidence
     has_stairs = len(stairs) > 0
     has_corridors = len(corridors) > 0
     has_ahs = supply_ahs is not None
     has_paths = any(s["paths"]["s2v"] for s in stairs)
-    score = sum([has_stairs, has_corridors, has_ahs, has_paths])
-    confidence = "high" if score >= 3 else "medium" if score >= 2 else "low"
+    has_vestibules = any(len(s["vestibules"]) > 0 for s in stairs)
+    has_corr_path = bool(corr_path)
+    score = sum([has_stairs, has_corridors, has_ahs, has_paths, has_vestibules, has_corr_path])
+    confidence = "high" if score >= 4 else "medium" if score >= 2 else "low"
+
+    # Build detailed detection log for user feedback
+    detection_details = []
+    for s in stairs:
+        detail = f"Stair '{s['label']}': {len(s['zones'])} levels"
+        if s["vestibules"]:
+            detail += f", {len(s['vestibules'])} vestibule zones"
+        if s["paths"]["s2v"]:
+            detail += f", S2V={s['paths']['s2v']}"
+        if s["paths"]["v2c"]:
+            detail += f", V2C={s['paths']['v2c']}"
+        if len(s.get("all_names", [])) > 1:
+            detail += f" (name variants: {', '.join(s['all_names'])})"
+        detection_details.append(detail)
+    for c in corridors:
+        detail = f"Corridor '{c['zone_name']}': {len(c['zones'])} levels"
+        if c["path_name"]:
+            detail += f", path={c['path_name']}"
+        detection_details.append(detail)
 
     return {
         "stairs": stairs,
@@ -791,9 +1008,11 @@ def auto_detect_config(model: ParsedModel) -> dict:
         "roof_configs": roof_configs,
         "weather": weather,
         "confidence": confidence,
+        "detection_details": detection_details,
         "summary": {
             "stairs_detected": len(stairs),
             "corridors_detected": len(corridors),
+            "vestibules_detected": sum(len(s["vestibules"]) for s in stairs),
             "stair_names": [s["label"] for s in stairs],
             "corridor_names": [c["zone_name"] for c in corridors],
         },

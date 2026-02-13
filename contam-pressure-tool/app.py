@@ -359,6 +359,54 @@ async def get_suggestions(model_id: str):
     return auto_detect_config(model)
 
 
+@app.get("/api/model/{model_id}/auto-configure")
+async def auto_configure(model_id: str):
+    """Fully automatic configuration: parse model, detect everything, return
+    a ready-to-apply configuration with stairs, corridors, vestibules, AHS,
+    flow paths, and roof configs all resolved.
+
+    This goes beyond /suggestions by also mapping zone names to zone IDs per
+    level, resolving AHS per stair/corridor, and providing a structured
+    configuration that the frontend can apply with zero user interaction.
+    """
+    model = parsed_models.get(model_id)
+    if not model:
+        raise HTTPException(404, "Model not found")
+
+    config = auto_detect_config(model)
+
+    # Enrich with fully resolved zone-to-level mappings
+    # For stairs: on each level, resolve the correct zone_id even if
+    # the zone name varies (e.g., Stair_4 on one level, Stair4 on another)
+    for stair in config["stairs"]:
+        all_names = stair.get("all_names", [stair["zone_name"]])
+        level_zone_map = {}
+        for z in stair["zones"]:
+            level_zone_map[z["level_num"]] = z
+        stair["level_zone_map"] = level_zone_map
+
+    # For corridors: same treatment
+    for corridor in config["corridors"]:
+        level_zone_map = {}
+        for z in corridor["zones"]:
+            level_zone_map[z["level_num"]] = z
+        corridor["level_zone_map"] = level_zone_map
+
+    # Include full level list so frontend knows all available levels
+    config["levels"] = [
+        {"index": lvl.index, "name": lvl.name}
+        for lvl in model.levels
+    ]
+
+    # Include AHS list
+    config["ahs_systems"] = [
+        {"id": ahs.id, "name": ahs.name}
+        for ahs in model.ahs_systems
+    ]
+
+    return config
+
+
 # ---------------------------------------------------------------------------
 # Analysis endpoints
 # ---------------------------------------------------------------------------
