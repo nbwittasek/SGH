@@ -743,11 +743,15 @@ const App = (() => {
         document.getElementById('num-corridors').value = numCorr;
         updateCorridorTabs();
 
-        // 3. Populate stair zone selections and AHS
+        // 3. Populate stair zone selections; AHS only at top (single injection)
         let stairZonesSet = 0, stairZonesMissed = 0;
         for (let i = 0; i < sg.stairs.length; i++) {
             const stair = sg.stairs[i];
             const stairAhsId = stair.ahs_id || (sg.supply_ahs ? sg.supply_ahs.id : 0);
+
+            // Find top level for this stair (highest level_num = roof/top)
+            const stairLevels = stair.zones.map(z => z.level_num);
+            const topLevel = stairLevels.length > 0 ? Math.max(...stairLevels) : 0;
 
             for (const zoneInfo of stair.zones) {
                 const zoneSel = document.getElementById(`stair-${i}-zone-${zoneInfo.level_num}`);
@@ -762,14 +766,18 @@ const App = (() => {
                     console.warn(`[AutoConfig] No select found: stair-${i}-zone-${zoneInfo.level_num}`);
                 }
 
-                const ahsSel = document.getElementById(`stair-${i}-ahs-${zoneInfo.level_num}`);
-                if (ahsSel && stairAhsId) ahsSel.value = stairAhsId;
+                // AHS only at the top level (single-point injection at roof)
+                if (zoneInfo.level_num === topLevel) {
+                    const ahsSel = document.getElementById(`stair-${i}-ahs-${zoneInfo.level_num}`);
+                    if (ahsSel && stairAhsId) ahsSel.value = stairAhsId;
+                    console.log(`[AutoConfig] AHS ${stairAhsId} assigned to ${stair.label} at top level ${topLevel}`);
+                }
             }
         }
         console.log(`[AutoConfig] Stair zones set: ${stairZonesSet}, missed: ${stairZonesMissed}`);
         updateSupplyZones();
 
-        // 4. Populate corridor zone selections and AHS
+        // 4. Populate corridor zone selections and AHS (corridor AHS at all levels — fire floor varies)
         let corrZonesSet = 0, corrZonesMissed = 0;
         for (let i = 0; i < sg.corridors.length; i++) {
             const corr = sg.corridors[i];
@@ -796,10 +804,10 @@ const App = (() => {
         updateRoofTable();
         updatePathSelection();
 
-        // Set roof configs
+        // Set roof configs — use SUPPLY AHS (supply fan at top of stair)
         for (let i = 0; i < sg.roof_configs.length && i < sg.stairs.length; i++) {
             const roof = sg.roof_configs[i];
-            const returnAhsId = sg.return_ahs ? sg.return_ahs.id : 0;
+            const supplyAhsId = sg.supply_ahs ? sg.supply_ahs.id : 0;
 
             const zoneSel = document.getElementById(`roof-zone-${i}`);
             if (zoneSel) {
@@ -810,7 +818,7 @@ const App = (() => {
             if (levelSel) levelSel.value = roof.level_num;
 
             const ahsSel = document.getElementById(`roof-ahs-${i}`);
-            if (ahsSel && returnAhsId) ahsSel.value = returnAhsId;
+            if (ahsSel && supplyAhsId) ahsSel.value = supplyAhsId;
         }
 
         // 6. Set path element selections
