@@ -165,14 +165,42 @@ async def open_project(request: Request):
     path = body.get("path", "")
 
     pj_path = Path(path)
-    if pj_path.is_dir():
+
+    # If the path is a file that is not project.json, use the parent dir
+    if pj_path.is_file() and pj_path.name != "project.json":
+        pj_path = pj_path.parent / "project.json"
+    elif pj_path.is_dir():
         pj_path = pj_path / "project.json"
 
     if not pj_path.exists():
-        raise HTTPException(404, f"Project file not found: {pj_path}")
+        # No project.json yet — create a default one in this folder
+        project_dir = pj_path.parent
+        if not project_dir.is_dir():
+            raise HTTPException(404, f"Folder not found: {project_dir}")
 
-    with open(pj_path, "r") as f:
-        current_project = json.load(f)
+        project_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "analysis").mkdir(exist_ok=True)
+
+        current_project = {
+            "project_name": project_dir.name,
+            "project_folder": str(project_dir),
+            "contam_executable": app_config.get("contam_executable_default", ""),
+            "base_models": {},
+            "num_stairs": 0,
+            "num_corridors": 0,
+            "stair_labels": [],
+            "stair_pressurization": {},
+            "corridor_depressurization": {},
+            "roof_stair_depressurization": {},
+            "airflow_paths": {"stairs": {}, "corridors": []},
+            "scenarios": [],
+            "acceptance_criteria": {"min_dp_inwc": 0.05, "max_dp_inwc": 0.45},
+        }
+        with open(pj_path, "w") as f:
+            json.dump(current_project, f, indent=2)
+    else:
+        with open(pj_path, "r") as f:
+            current_project = json.load(f)
 
     _add_recent_project(
         current_project.get("project_name", "Unknown"),
