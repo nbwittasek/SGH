@@ -1717,6 +1717,9 @@ const App = (() => {
             // Apply everything from the upload response
             applyUploadResult(data);
 
+            // Also extract estimation data so it auto-fills when user visits the Estimation page
+            forwardToEstimation(file);
+
             statusText.textContent = 'Done!';
 
             // Brief pause, then switch to config tab
@@ -1729,6 +1732,26 @@ const App = (() => {
             dropZone.style.display = '';
             uploadProgress.style.display = 'none';
             alert('Upload failed: ' + e.message);
+        }
+    }
+
+    async function forwardToEstimation(file) {
+        // Extract estimation values in the background and store in localStorage
+        // so the Estimation page auto-fills when visited.
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const resp = await fetch('/api/estimation/extract-from-prj', {
+                method: 'POST',
+                body: formData,
+            });
+            if (resp.ok) {
+                const estData = await resp.json();
+                localStorage.setItem('est_prj_pending', JSON.stringify(estData));
+                console.log('[APP] Estimation data forwarded to localStorage for auto-fill');
+            }
+        } catch (e) {
+            console.warn('[APP] Could not forward estimation data:', e);
         }
     }
 

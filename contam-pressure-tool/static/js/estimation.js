@@ -23,6 +23,8 @@ const Est = (() => {
         initTabs();
         initDropZone();
         addStairwell();  // Start with one stairwell
+        // Auto-load from localStorage if estimation data was forwarded from CONTAM tool
+        tryLoadFromStorage();
     }
 
     function initTabs() {
@@ -547,6 +549,8 @@ const Est = (() => {
         const banner = document.getElementById('est-drop-banner');
         const statusSpan = document.getElementById('est-drop-status');
 
+        console.log('[EST] importPrjFile called with:', file.name);
+
         banner.classList.remove('success', 'error');
         banner.classList.add('loading');
         statusSpan.innerHTML = `Parsing <strong>${esc(file.name)}</strong>...`;
@@ -555,17 +559,20 @@ const Est = (() => {
             const formData = new FormData();
             formData.append('file', file);
 
+            console.log('[EST] Sending POST to /api/estimation/extract-from-prj');
             const resp = await fetch('/api/estimation/extract-from-prj', {
                 method: 'POST',
                 body: formData,
             });
 
+            console.log('[EST] Response status:', resp.status);
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({ detail: resp.statusText }));
                 throw new Error(err.detail || resp.statusText);
             }
 
             const data = await resp.json();
+            console.log('[EST] Received data:', JSON.stringify(data).substring(0, 500));
             applyPrjData(data);
 
             banner.classList.remove('loading');
@@ -578,13 +585,10 @@ const Est = (() => {
                 : '';
             statusSpan.innerHTML = `Values loaded from <strong>${esc(file.name)}</strong>${detailText}`;
         } catch (e) {
+            console.error('[EST] importPrjFile error:', e);
             banner.classList.remove('loading');
             banner.classList.add('error');
             statusSpan.textContent = 'Error: ' + e.message;
-            setTimeout(() => {
-                banner.classList.remove('error');
-                statusSpan.innerHTML = 'Drop a <strong>.prj</strong> file anywhere to auto-fill from CONTAM model';
-            }, 5000);
         }
     }
 
@@ -592,6 +596,9 @@ const Est = (() => {
         const b = data.building || {};
         const c = data.conditions || {};
         const e = data.elevators || {};
+
+        console.log('[EST] applyPrjData — building:', b, 'conditions:', c, 'elevators:', e,
+                     'stairwells:', (data.stairwells || []).length);
 
         // --- Building geometry ---
         setFormVal('est-n-floors-above', b.n_floors_above);
@@ -634,13 +641,44 @@ const Est = (() => {
                 });
             }
             renderStairwells();
+            console.log('[EST] Rendered', stairwells.length, 'stairwells from PRJ');
         }
+
+        // Store imported data in localStorage so it persists across page visits
+        try { localStorage.setItem('est_prj_data', JSON.stringify(data)); } catch (_) {}
+
+        console.log('[EST] applyPrjData complete');
     }
 
     function setFormVal(id, value) {
         const el = document.getElementById(id);
         if (el && value !== undefined && value !== null) {
             el.value = value;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Cross-page auto-fill (from CONTAM tool → Estimation via localStorage)
+    // -----------------------------------------------------------------------
+    function tryLoadFromStorage() {
+        try {
+            const raw = localStorage.getItem('est_prj_pending');
+            if (!raw) return;
+            // Only apply once — remove immediately
+            localStorage.removeItem('est_prj_pending');
+            const data = JSON.parse(raw);
+            console.log('[EST] Auto-loading estimation data from localStorage (forwarded from CONTAM tool)');
+            applyPrjData(data);
+            const banner = document.getElementById('est-drop-banner');
+            const statusSpan = document.getElementById('est-drop-status');
+            if (banner && statusSpan) {
+                banner.classList.add('success');
+                const name = data.filename || 'CONTAM model';
+                statusSpan.innerHTML = `Values auto-filled from <strong>${esc(name)}</strong>`;
+            }
+        } catch (e) {
+            console.warn('[EST] Failed to load from localStorage:', e);
         }
     }
 
