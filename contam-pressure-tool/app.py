@@ -1394,7 +1394,7 @@ def _extract_estimation_values(model: ParsedModel, config: dict) -> dict:
     # --- Elevator shafts ---
     elev_re = re.compile(r"(?i)(elev|shaft|lift)")
     exclude_re = re.compile(r"(?i)(stair|vest|corr|hallway|stwr)")
-    elev_groups: dict[str, list] = {}
+    elev_groups: Dict[str, list] = {}
     for z in model.zones:
         if elev_re.search(z.name) and not exclude_re.search(z.name):
             key = re.sub(r"[_\-\s]", "", z.name).lower()
