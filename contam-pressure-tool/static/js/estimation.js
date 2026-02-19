@@ -129,7 +129,7 @@ const Est = (() => {
                     </div>
                     <div class="form-group">
                         <label>Cross-section area (m&sup2;)</label>
-                        <input type="number" id="stair-${i}-area" value="${s.area}" step="0.5" min="3" max="40">
+                        <input type="number" id="stair-${i}-area" value="${s.area}" step="0.5" min="3" max="200">
                     </div>
                     <div class="form-group">
                         <label>Door width (m)</label>
@@ -165,7 +165,7 @@ const Est = (() => {
                     </div>
                     <div class="form-group">
                         <label>Perimeter (m)</label>
-                        <input type="number" id="stair-${i}-perim" value="${(s.perim || 6 * Math.sqrt(s.area / 2)).toFixed(1)}" step="0.5" min="4" max="30">
+                        <input type="number" id="stair-${i}-perim" value="${(s.perim || 6 * Math.sqrt(s.area / 2)).toFixed(1)}" step="0.5" min="4" max="80">
                     </div>
                 </div>
             </div>`;
