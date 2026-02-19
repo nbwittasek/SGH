@@ -41,6 +41,8 @@ T_STD_K = 293.15       # 20 deg C in K (standard conditions)
 
 # Conversion helpers
 CMS_TO_CFM = 2118.88   # 1 m^3/s = 2118.88 CFM
+N_TO_LBF = 0.224809    # 1 N = 0.224809 lbf
+PA_TO_INWG = 1.0 / 249.089  # 1 Pa = 0.004015 in. w.g.
 
 
 def _c_to_k(t_c: float) -> float:
@@ -56,6 +58,16 @@ def cms_to_cfm(q_cms: float) -> float:
 def cfm_to_cms(q_cfm: float) -> float:
     """CFM to m^3/s."""
     return q_cfm / CMS_TO_CFM
+
+
+def n_to_lbf(f_n: float) -> float:
+    """Newtons to pounds-force."""
+    return f_n * N_TO_LBF
+
+
+def pa_to_inwg(p_pa: float) -> float:
+    """Pascals to inches water gauge."""
+    return p_pa * PA_TO_INWG
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +532,17 @@ class EstimationEngine:
 
         A_Ld = get_stair_door_leakage(self.config, stair)
 
+        # Trace EQ-02 (door leakage area)
+        g_d_m = stair.door_gap_mm / 1000.0
+        self._add_trace(
+            "EQ-02", f"{stair.label} — Door leakage area",
+            "A_Ld = g_d × (2×w_d + 2×h_d − w_threshold)",
+            {"g_d": f"{g_d_m:.4f} m", "w_d": f"{stair.door_width} m",
+             "h_d": f"{stair.door_height} m"},
+            f"A_Ld = {g_d_m:.4f} × (2×{stair.door_width} + 2×{stair.door_height} − {stair.door_width})",
+            f"A_Ld = {A_Ld:.5f} m² (used value: {A_Ld:.5f} m²)",
+        )
+
         # Leakage area for stair exterior walls
         A_Lw = get_leakage_area("exterior_wall", self.config.leakage.exterior_wall)
 
@@ -530,6 +553,16 @@ class EstimationEngine:
 
         Q_open_per_door = eq12_required_open_door_flow(
             V_min, stair.door_width, stair.door_height
+        )
+
+        # Trace EQ-12 (required open door flow)
+        self._add_trace(
+            "EQ-12", f"{stair.label} — Required open-door flow",
+            "Q_open = V_min × w_d × h_d",
+            {"V_min": f"{V_min} m/s", "w_d": f"{stair.door_width} m",
+             "h_d": f"{stair.door_height} m"},
+            f"Q_open = {V_min} × {stair.door_width} × {stair.door_height}",
+            f"Q_open = {Q_open_per_door:.4f} m³/s ({cms_to_cfm(Q_open_per_door):.0f} CFM)",
         )
 
         floor_results: List[FloorResult] = []
@@ -546,6 +579,7 @@ class EstimationEngine:
 
         floors = self._all_floor_numbers()
         fire_floor = self.config.fire_floor
+        _traced_first = False  # Trace detailed calcs for first served floor
 
         for f in floors:
             # Check if this stair serves this floor
@@ -554,35 +588,54 @@ class EstimationEngine:
 
             h = self._floor_height(f)
             label = self._floor_label(f)
+            _do_trace = not _traced_first or f == fire_floor
 
             # Stack effect at this floor (EQ-07)
-            # The stair-to-floor differential uses T_i (floor/building temp)
-            # and T_s (stairwell temp).  In winter with an unheated stair
-            # (T_s = T_o < T_i), the cold stair air is denser, creating higher
-            # pressure at lower floors and lower pressure at upper floors.
             dP_stack = eq07_stack_effect(self.T_i_K, self.T_s_K, h, self.h_npp)
 
-            # Wind effect on stair-to-floor differential (EQ-15).
-            # For enclosed stairwells, the direct wind effect on stair door
-            # DP is small because wind acts through wall leakage, which is
-            # attenuated.  The primary wind impact is captured in the exhaust
-            # calculation (EQ-21) via exterior wall inflows.
-            # For exterior stairs with significant exterior wall area, a
-            # fraction of wind pressure is applied.
+            if _do_trace:
+                self._add_trace(
+                    "EQ-07", f"{stair.label} Floor {label} — Stack effect",
+                    "ΔP_s = 3460 × (1/T_i − 1/T_s) × (h − h_NPP)",
+                    {"T_i": f"{self.T_i_K:.2f} K", "T_s": f"{self.T_s_K:.2f} K",
+                     "h": f"{h:.2f} m", "h_NPP": f"{self.h_npp:.2f} m"},
+                    f"ΔP_s = 3460 × (1/{self.T_i_K:.2f} − 1/{self.T_s_K:.2f}) × ({h:.2f} − {self.h_npp:.2f})",
+                    f"ΔP_stack = {dP_stack:.2f} Pa ({pa_to_inwg(dP_stack):.4f} in. w.g.)",
+                )
+
+            # Wind effect on stair-to-floor differential
             dP_wind = 0.0
             if stair.n_exterior_walls > 0 and wind_pressures:
                 stair_wall_area = stair.exterior_wall_length * h_f * stair.n_exterior_walls
                 stair_total_area = stair.cross_section_perimeter * h_f
                 wall_fraction = stair_wall_area / max(stair_total_area, 1.0)
-                # Leeward face (worst case for maintaining min DP)
                 min_wind = min(wind_pressures.values())
                 dP_wind = min_wind * wall_fraction * 0.2
+
+                if _do_trace:
+                    self._add_trace(
+                        "EQ-09", f"{stair.label} Floor {label} — Wind pressure contribution",
+                        "ΔP_w = P_wind × A_ext_frac × 0.2",
+                        {"P_wind_min": f"{min_wind:.2f} Pa", "wall_frac": f"{wall_fraction:.3f}"},
+                        f"ΔP_w = {min_wind:.2f} × {wall_fraction:.3f} × 0.2",
+                        f"ΔP_wind = {dP_wind:.2f} Pa ({pa_to_inwg(dP_wind):.4f} in. w.g.)",
+                    )
 
             # Depressurization offset (fire floor only)
             dP_depress = dP_exhaust if f == fire_floor else 0.0
 
             # EQ-15: Net pressure differential
             dP_net = dP_mech + dP_stack + dP_wind - dP_depress
+
+            if _do_trace:
+                self._add_trace(
+                    "EQ-15", f"{stair.label} Floor {label} — Net pressure differential",
+                    "ΔP_net = ΔP_mech + ΔP_stack + ΔP_wind − ΔP_exhaust",
+                    {"ΔP_mech": f"{dP_mech:.2f} Pa", "ΔP_stack": f"{dP_stack:.2f} Pa",
+                     "ΔP_wind": f"{dP_wind:.2f} Pa", "ΔP_exhaust": f"{dP_depress:.2f} Pa"},
+                    f"ΔP_net = {dP_mech:.2f} + {dP_stack:.2f} + {dP_wind:.2f} − {dP_depress:.2f}",
+                    f"ΔP_net = {dP_net:.2f} Pa ({pa_to_inwg(dP_net):.4f} in. w.g.)",
+                )
 
             # Leakage through closed door(s) at this floor (EQ-03)
             is_open = f in open_door_floors
@@ -597,8 +650,18 @@ class EstimationEngine:
                         C_d_closed, A_Ld * stair.doors_per_floor,
                         dP_net, self.rho_s
                     )
+
+                    if _do_trace:
+                        A_total = A_Ld * stair.doors_per_floor
+                        self._add_trace(
+                            "EQ-03", f"{stair.label} Floor {label} — Closed-door leakage flow",
+                            "Q = C_d × A × √(2 × ΔP / ρ)",
+                            {"C_d": "0.65", "A": f"{A_total:.5f} m²",
+                             "ΔP": f"{dP_net:.2f} Pa", "ρ_s": f"{self.rho_s:.4f} kg/m³"},
+                            f"Q = 0.65 × {A_total:.5f} × √(2 × {dP_net:.2f} / {self.rho_s:.4f})",
+                            f"Q_leak = {q_leak_closed:.5f} m³/s ({cms_to_cfm(q_leak_closed):.1f} CFM)",
+                        )
                 else:
-                    # Negative dP means air flows INTO stair (undesirable)
                     q_leak_closed = 0.0
 
             # Wall leakage for this floor (stair exterior walls)
@@ -616,6 +679,19 @@ class EstimationEngine:
                 stair.door_width, stair.door_height,
                 criteria.handle_to_latch
             )
+
+            if _do_trace:
+                F_p = abs(dP_net) * stair.door_width * stair.door_height / 2.0
+                self._add_trace(
+                    "EQ-10b", f"{stair.label} Floor {label} — Door-opening force",
+                    "F_total = F_closer + (ΔP × w_d × h_d / 2) × w_d / (w_d − d)",
+                    {"F_closer": f"{criteria.door_closer_force:.1f} N ({n_to_lbf(criteria.door_closer_force):.1f} lbf)",
+                     "ΔP": f"{dP_net:.2f} Pa", "w_d": f"{stair.door_width} m",
+                     "h_d": f"{stair.door_height} m", "d": f"{criteria.handle_to_latch} m"},
+                    f"F_p = {F_p:.2f} N; F_total = {criteria.door_closer_force:.1f} + {F_p:.2f} × {stair.door_width}/({stair.door_width} − {criteria.handle_to_latch})",
+                    f"F_total = {f_total:.1f} N ({n_to_lbf(f_total):.1f} lbf)",
+                )
+                _traced_first = True
 
             # Check constraints
             status = "PASS"
@@ -662,12 +738,41 @@ class EstimationEngine:
         # EQ-13: Total supply, all doors closed
         q_supply_closed = total_q_closed + total_q_walls
 
+        self._add_trace(
+            "EQ-13", f"{stair.label} — Total supply (all doors closed)",
+            "Q_supply_closed = Σ Q_leak_doors + Σ Q_leak_walls",
+            {"Σ Q_leak_doors": f"{total_q_closed:.5f} m³/s",
+             "Σ Q_leak_walls": f"{total_q_walls:.5f} m³/s"},
+            f"Q_supply_closed = {total_q_closed:.5f} + {total_q_walls:.5f}",
+            f"Q_supply_closed = {q_supply_closed:.5f} m³/s ({cms_to_cfm(q_supply_closed):.0f} CFM)",
+        )
+
         # EQ-14: Total supply, design doors open
         n_open = len(open_door_floors)
         q_open_doors = n_open * Q_open_per_door * stair.doors_per_floor if n_open > 0 else 0.0
         q_supply_open = total_q_open_closed_part + q_open_doors + total_q_walls
 
+        self._add_trace(
+            "EQ-14", f"{stair.label} — Total supply (doors open)",
+            "Q_supply_open = Σ Q_leak_closed_floors + Q_open_doors + Σ Q_leak_walls",
+            {"Σ Q_closed": f"{total_q_open_closed_part:.5f} m³/s",
+             "Q_open_doors": f"{q_open_doors:.5f} m³/s ({n_open} doors)",
+             "Σ Q_walls": f"{total_q_walls:.5f} m³/s"},
+            f"Q_supply_open = {total_q_open_closed_part:.5f} + {q_open_doors:.5f} + {total_q_walls:.5f}",
+            f"Q_supply_open = {q_supply_open:.5f} m³/s ({cms_to_cfm(q_supply_open):.0f} CFM)",
+        )
+
         q_supply_design = max(q_supply_closed, q_supply_open)
+
+        governing = "all closed" if q_supply_closed >= q_supply_open else "doors open"
+        self._add_trace(
+            "DESIGN", f"{stair.label} — Governing supply air rate",
+            "Q_design = max(Q_closed, Q_open)",
+            {"Q_closed": f"{cms_to_cfm(q_supply_closed):.0f} CFM",
+             "Q_open": f"{cms_to_cfm(q_supply_open):.0f} CFM"},
+            f"Governing case: {governing}",
+            f"Q_design = {q_supply_design:.5f} m³/s ({cms_to_cfm(q_supply_design):.0f} CFM)",
+        )
 
         return StairResult(
             label=stair.label,
@@ -701,11 +806,20 @@ class EstimationEngine:
                 C_d, A_Ld, stair.doors_per_floor,
                 dP_mech, dP_exhaust, self.rho_s
             )
+            self._add_trace(
+                "EQ-19", f"Exhaust — Stair leakage from {stair.label} into fire floor",
+                "Q = C_d × A_Ld × n_d × √(2 × (ΔP_mech + ΔP_exhaust) / ρ_s)",
+                {"C_d": "0.65", "A_Ld": f"{A_Ld:.5f} m²",
+                 "n_d": str(stair.doors_per_floor),
+                 "ΔP_mech": f"{dP_mech:.2f} Pa", "ΔP_exhaust": f"{dP_exhaust:.2f} Pa",
+                 "ρ_s": f"{self.rho_s:.4f} kg/m³"},
+                f"Q = 0.65 × {A_Ld:.5f} × {stair.doors_per_floor} × √(2 × ({dP_mech:.2f} + {dP_exhaust:.2f}) / {self.rho_s:.4f})",
+                f"Q_stair = {q_s:.5f} m³/s ({cms_to_cfm(q_s):.0f} CFM)",
+            )
             q_stairs_total += q_s
 
         # -- EQ-20: Elevator leakage --
         A_Le = get_elevator_door_leakage(self.config)
-        # Elevator shaft dP includes stack effect
         h_fire = self._floor_height(fire_floor)
         dP_elev_stack = eq07_stack_effect(self.T_o_K, self.T_i_K, h_fire, self.h_npp)
         dP_elev = abs(dP_elev_stack) + dP_exhaust
@@ -713,14 +827,23 @@ class EstimationEngine:
             C_d, A_Le, elev.n_shafts, dP_elev, self.rho_i
         )
 
+        self._add_trace(
+            "EQ-20", "Exhaust — Elevator shaft leakage into fire floor",
+            "Q = C_d × A_Le × n_elev × √(2 × ΔP_elev / ρ_i)",
+            {"C_d": "0.65", "A_Le": f"{A_Le:.5f} m²",
+             "n_elev": str(elev.n_shafts),
+             "ΔP_elev": f"{dP_elev:.2f} Pa (stack={dP_elev_stack:.2f} + exhaust={dP_exhaust:.2f})",
+             "ρ_i": f"{self.rho_i:.4f} kg/m³"},
+            f"Q = 0.65 × {A_Le:.5f} × {elev.n_shafts} × √(2 × {dP_elev:.2f} / {self.rho_i:.4f})",
+            f"Q_elev = {q_elev:.5f} m³/s ({cms_to_cfm(q_elev):.0f} CFM)",
+        )
+
         # -- EQ-21: Exterior wall leakage --
         A_Lw = get_leakage_area("exterior_wall", self.config.leakage.exterior_wall)
-        # Sum over faces
         q_ext_total = 0.0
         n_faces = 4
         perimeter_per_face = bldg.building_perimeter / n_faces
         for face_name, dP_w in wind_pressures.items():
-            # Only positive wind pressure contributes inflow
             effective_dP_w = max(dP_w, 0.0)
             q_face = eq21_exterior_leak_to_fire_floor(
                 C_d, A_Lw, perimeter_per_face, h_f,
@@ -728,23 +851,86 @@ class EstimationEngine:
             )
             q_ext_total += q_face
 
+        A_wall_total = A_Lw * bldg.building_perimeter * h_f
+        self._add_trace(
+            "EQ-21", "Exhaust — Exterior wall leakage into fire floor (all faces)",
+            "Q = Σ_faces[ C_d × (A_Lw × P_face × h_f) × √(2 × (ΔP_exh + ΔP_wind) / ρ_o) ]",
+            {"A_Lw": f"{A_Lw:.5e} m²/m²", "P_bldg": f"{bldg.building_perimeter} m",
+             "h_f": f"{h_f} m", "ΔP_exhaust": f"{dP_exhaust:.2f} Pa",
+             "ρ_o": f"{self.rho_o:.4f} kg/m³"},
+            f"Total wall leakage area = {A_wall_total:.5f} m², summed over 4 faces",
+            f"Q_ext = {q_ext_total:.5f} m³/s ({cms_to_cfm(q_ext_total):.0f} CFM)",
+        )
+
         # -- EQ-22: Vertical leakage (above + below) --
         A_Lf = get_leakage_area("floor_ceiling", self.config.leakage.floor_ceiling)
         q_above = eq22_vertical_leak(C_d, A_Lf, bldg.floor_area, dP_exhaust, self.rho_i)
         q_below = eq22_vertical_leak(C_d, A_Lf, bldg.floor_area, dP_exhaust, self.rho_i)
         q_vertical = q_above + q_below
 
-        # -- EQ-23 & EQ-24: Thermal expansion --
+        A_floor_total = A_Lf * bldg.floor_area
+        self._add_trace(
+            "EQ-22", "Exhaust — Vertical leakage (floor above + below fire floor)",
+            "Q = 2 × C_d × (A_Lf × A_floor) × √(2 × ΔP_exhaust / ρ_i)",
+            {"A_Lf": f"{A_Lf:.5e} m²/m²", "A_floor": f"{bldg.floor_area} m²",
+             "ΔP_exhaust": f"{dP_exhaust:.2f} Pa", "ρ_i": f"{self.rho_i:.4f} kg/m³"},
+            f"Q_each = 0.65 × {A_floor_total:.5f} × √(2 × {dP_exhaust:.2f} / {self.rho_i:.4f}); Q_vert = 2 × Q_each",
+            f"Q_vertical = {q_vertical:.5f} m³/s ({cms_to_cfm(q_vertical):.0f} CFM)",
+        )
+
+        # -- EQ-24: Fire entrainment --
         Q_fire = eq24_fire_entrainment(
             cond.design_fire_hrr, self.rho_i, self.T_f_K, self.T_i_K
         )
+
+        self._add_trace(
+            "EQ-24", "Exhaust — Fire plume entrainment",
+            "Q_fire = H_dot / (ρ_i × c_p × (T_f − T_i))",
+            {"H_dot": f"{cond.design_fire_hrr:.0f} kW",
+             "ρ_i": f"{self.rho_i:.4f} kg/m³",
+             "T_f": f"{self.T_f_K:.2f} K", "T_i": f"{self.T_i_K:.2f} K"},
+            f"Q_fire = ({cond.design_fire_hrr:.0f} × 1000) / ({self.rho_i:.4f} × 1005 × ({self.T_f_K:.2f} − {self.T_i_K:.2f}))",
+            f"Q_fire = {Q_fire:.5f} m³/s ({cms_to_cfm(Q_fire):.0f} CFM)",
+        )
+
+        # -- EQ-23: Thermal expansion --
         q_expansion = eq23_thermal_expansion(Q_fire, self.T_f_K, self.T_i_K)
+
+        self._add_trace(
+            "EQ-23", "Exhaust — Thermal expansion volume",
+            "Q_expansion = Q_fire × (T_f / T_i − 1)",
+            {"Q_fire": f"{Q_fire:.5f} m³/s",
+             "T_f": f"{self.T_f_K:.2f} K", "T_i": f"{self.T_i_K:.2f} K"},
+            f"Q_expansion = {Q_fire:.5f} × ({self.T_f_K:.2f} / {self.T_i_K:.2f} − 1)",
+            f"Q_expansion = {q_expansion:.5f} m³/s ({cms_to_cfm(q_expansion):.0f} CFM)",
+        )
 
         # -- EQ-25: Total exhaust --
         q_exhaust = q_stairs_total + q_elev + q_ext_total + q_vertical + q_expansion
 
+        self._add_trace(
+            "EQ-25", "Exhaust — Total fire floor exhaust (at fire temperature)",
+            "Q_exhaust = Q_stairs + Q_elev + Q_ext + Q_vert + Q_expansion",
+            {"Q_stairs": f"{q_stairs_total:.5f} m³/s",
+             "Q_elev": f"{q_elev:.5f} m³/s",
+             "Q_ext": f"{q_ext_total:.5f} m³/s",
+             "Q_vert": f"{q_vertical:.5f} m³/s",
+             "Q_expansion": f"{q_expansion:.5f} m³/s"},
+            f"Q_exhaust = {q_stairs_total:.5f} + {q_elev:.5f} + {q_ext_total:.5f} + {q_vertical:.5f} + {q_expansion:.5f}",
+            f"Q_exhaust = {q_exhaust:.5f} m³/s ({cms_to_cfm(q_exhaust):.0f} CFM)",
+        )
+
         # -- EQ-26: Standard conditions --
         q_exhaust_std = q_exhaust * (self.T_f_K / T_STD_K)
+
+        self._add_trace(
+            "EQ-26", "Exhaust — Standard conditions (20°C reference)",
+            "Q_std = Q_exhaust × (T_f / T_std)",
+            {"Q_exhaust": f"{q_exhaust:.5f} m³/s",
+             "T_f": f"{self.T_f_K:.2f} K", "T_std": f"{T_STD_K:.2f} K"},
+            f"Q_std = {q_exhaust:.5f} × ({self.T_f_K:.2f} / {T_STD_K:.2f})",
+            f"Q_std = {q_exhaust_std:.5f} m³/s ({cms_to_cfm(q_exhaust_std):.0f} CFM)",
+        )
 
         fire_label = self._floor_label(fire_floor)
 
@@ -771,12 +957,25 @@ class EstimationEngine:
         # Step 1: Compute densities
         self._compute_densities(season)
 
-        # Wind pressures
+        # Wind pressures (EQ-09)
         wind_pressures = compute_wind_pressures(
             self.config.conditions.wind_speed,
             self.config.conditions.wind_direction,
             self.rho_o,
         )
+
+        # Trace wind pressures
+        if self.config.conditions.wind_speed > 0:
+            wp_str = ", ".join(f"{k}={v:.2f} Pa" for k, v in wind_pressures.items())
+            self._add_trace(
+                "EQ-09", "Wind pressures on building faces",
+                "ΔP_w = 0.5 × C_p × ρ_o × V_w²",
+                {"V_w": f"{self.config.conditions.wind_speed} m/s",
+                 "ρ_o": f"{self.rho_o:.4f} kg/m³",
+                 "wind_dir": f"{self.config.conditions.wind_direction}°"},
+                f"Per face: {wp_str}",
+                f"Windward max = {max(wind_pressures.values()):.2f} Pa ({pa_to_inwg(max(wind_pressures.values())):.4f} in. w.g.)",
+            )
 
         # Design targets
         dP_mech = max(
@@ -784,6 +983,15 @@ class EstimationEngine:
             self.config.criteria.floor_exhaust_dp
         )
         dP_exhaust = self.config.criteria.floor_exhaust_dp
+
+        self._add_trace(
+            "SETUP", "Design pressure targets",
+            "ΔP_mech = max(min_dp_closed, floor_exhaust_dp)",
+            {"min_dp_closed": f"{self.config.criteria.min_dp_closed} Pa ({pa_to_inwg(self.config.criteria.min_dp_closed):.4f} in. w.g.)",
+             "floor_exhaust_dp": f"{dP_exhaust} Pa ({pa_to_inwg(dP_exhaust):.4f} in. w.g.)"},
+            f"ΔP_mech = max({self.config.criteria.min_dp_closed}, {dP_exhaust})",
+            f"ΔP_mech = {dP_mech:.2f} Pa ({pa_to_inwg(dP_mech):.4f} in. w.g.)",
+        )
 
         # Check max allowable dP from door force
         for stair in self.config.stairwells:
@@ -824,7 +1032,13 @@ class EstimationEngine:
         stair_results: List[StairResult] = []
         exhaust_result: Optional[ExhaustResult] = None
 
+        # Save setup traces (EQ-01, EQ-09, SETUP) — emitted once before iteration
+        setup_traces = list(self.traces)
+
         for iteration in range(MAX_ITER):
+            # Reset per-iteration traces; keep setup traces for final output
+            self.traces = list(setup_traces)
+
             # Step 3: Compute stairwell supply
             stair_results = []
             for stair in self.config.stairwells:

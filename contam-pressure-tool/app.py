@@ -1012,7 +1012,7 @@ def _build_analysis_config(body: dict) -> AnalysisConfig:
 # ---------------------------------------------------------------------------
 # Estimation Tool endpoints (ASHRAE HSCE analytical method)
 # ---------------------------------------------------------------------------
-from core.estimation_engine import EstimationEngine, cms_to_cfm
+from core.estimation_engine import EstimationEngine, cms_to_cfm, n_to_lbf, pa_to_inwg
 from core.estimation_models import (
     BuildingGeometry,
     DesignConditions,
@@ -1205,11 +1205,15 @@ async def run_estimation(request: Request):
                     "dp_stack": round(fr.dp_stack, 2),
                     "dp_wind": round(fr.dp_wind, 2),
                     "dp_net": round(fr.dp_net, 2),
+                    "dp_stack_inwg": round(pa_to_inwg(fr.dp_stack), 4),
+                    "dp_wind_inwg": round(pa_to_inwg(fr.dp_wind), 4),
+                    "dp_net_inwg": round(pa_to_inwg(fr.dp_net), 4),
                     "q_leak_closed": round(fr.q_leak_closed, 5),
                     "q_leak_closed_cfm": round(cms_to_cfm(fr.q_leak_closed), 1),
                     "q_flow_open": round(fr.q_flow_open, 5),
                     "q_flow_open_cfm": round(cms_to_cfm(fr.q_flow_open), 1),
                     "f_total": round(fr.f_total, 1),
+                    "f_total_lbf": round(n_to_lbf(fr.f_total), 1),
                     "status": fr.status,
                     "failure_reasons": fr.failure_reasons,
                 })
@@ -1263,11 +1267,24 @@ async def run_estimation(request: Request):
                 "constraints_violated": sc.constraints_violated,
             })
 
+        # Serialize calculation traces
+        traces = []
+        for tr in result.calculation_traces:
+            traces.append({
+                "equation_id": tr.equation_id,
+                "description": tr.description,
+                "formula": tr.formula,
+                "inputs": tr.inputs,
+                "substitution": tr.substitution,
+                "result": tr.result,
+            })
+
         return {
             "status": "ok",
             "stair_results": stair_summaries,
             "exhaust_result": exhaust,
             "sensitivity_cases": sensitivity,
+            "calculation_traces": traces,
             "npp_height": round(result.npp_height, 2),
             "all_constraints_met": result.all_constraints_met,
             "warnings": result.warnings,

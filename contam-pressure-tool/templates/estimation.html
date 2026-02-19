@@ -303,6 +303,15 @@
                     <div id="est-sensitivity-content"></div>
                 </div>
 
+                <!-- Calculation Traces (equations in succession) -->
+                <div id="est-traces-section" style="display:none;">
+                    <h3>Calculation Trace &mdash; All Equations</h3>
+                    <p style="font-size:0.85em;color:#7f8c9b;margin-bottom:8px;">
+                        Step-by-step equation evaluation for plan checker verification.
+                    </p>
+                    <div id="est-traces-content"></div>
+                </div>
+
                 <div class="btn-row" id="est-report-btns" style="margin-top:16px; display:none;">
                     <button class="btn" onclick="Est.nextTab('est-conditions')">&larr; Back to Inputs</button>
                     <button class="btn btn-primary" onclick="Est.generateReport()">Generate Report (HTML)</button>

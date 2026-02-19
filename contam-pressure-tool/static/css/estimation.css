@@ -214,3 +214,27 @@
     color: #555;
     margin: 12px 0 6px;
 }
+
+/* Dual-unit small text in table cells */
+.est-table td small {
+    display: block;
+    font-size: 7.5pt;
+    color: #7f8c9b;
+}
+
+/* Calculation Trace Blocks */
+.trace-block {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    font-size: 8.5pt;
+    font-family: "Consolas", "Courier New", monospace;
+    line-height: 1.5;
+}
+.trace-block .trace-eq {
+    font-weight: 700;
+    color: #2e86de;
+    margin-bottom: 2px;
+}

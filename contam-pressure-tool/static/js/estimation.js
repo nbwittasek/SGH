@@ -295,6 +295,7 @@ const Est = (() => {
             renderFloorTables(data);
             renderExhaust(data);
             renderSensitivity(data);
+            renderCalculationTraces(data);
 
             // Show report buttons
             document.getElementById('est-report-btns').style.display = '';
@@ -314,7 +315,15 @@ const Est = (() => {
         document.getElementById('est-exhaust-section').style.display = 'none';
         document.getElementById('est-sensitivity-section').style.display = 'none';
         document.getElementById('est-report-btns').style.display = 'none';
+        const tracesDiv = document.getElementById('est-traces-section');
+        if (tracesDiv) tracesDiv.style.display = 'none';
     }
+
+    // Unit conversion helpers (SI → Imperial)
+    function paToInwg(pa) { return pa / 249.089; }
+    function nToLbf(n) { return n * 0.224809; }
+    function fmtDP(pa) { return `${pa.toFixed(2)} Pa (${paToInwg(pa).toFixed(4)} in.&nbsp;w.g.)`; }
+    function fmtForce(n) { return `${n.toFixed(1)} N (${nToLbf(n).toFixed(1)} lbf)`; }
 
     function renderSystemSummary(data) {
         if (!data.stair_results) return;
@@ -359,28 +368,31 @@ const Est = (() => {
             html += `<table class="est-table results-table">
                 <thead><tr>
                     <th>Floor</th><th>Height (m)</th>
-                    <th>&Delta;P_stack (Pa)</th><th>&Delta;P_wind (Pa)</th>
-                    <th>&Delta;P_net (Pa)</th>
-                    <th>Q_leak (m&sup3;/s)</th><th>Q_leak (CFM)</th>
-                    <th>Q_open (m&sup3;/s)</th><th>Q_open (CFM)</th>
-                    <th>F_total (N)</th><th>Status</th>
+                    <th>&Delta;P_stack<br>(Pa / in.w.g.)</th>
+                    <th>&Delta;P_wind<br>(Pa / in.w.g.)</th>
+                    <th>&Delta;P_net<br>(Pa / in.w.g.)</th>
+                    <th>Q_leak (CFM)</th>
+                    <th>Q_open (CFM)</th>
+                    <th>F_total<br>(N / lbf)</th><th>Status</th>
                 </tr></thead><tbody>`;
 
             for (const fr of (sr.floor_results || [])) {
                 const cls = fr.status === 'PASS' ? 'pass' : 'fail';
                 const reasons = fr.failure_reasons || [];
                 const title = reasons.length ? ` title="${esc(reasons.join('; '))}"` : '';
+                const dpStackInwg = paToInwg(fr.dp_stack).toFixed(4);
+                const dpWindInwg = paToInwg(fr.dp_wind).toFixed(4);
+                const dpNetInwg = paToInwg(fr.dp_net).toFixed(4);
+                const fLbf = nToLbf(fr.f_total).toFixed(1);
                 html += `<tr>
                     <td class="level-cell">${esc(fr.floor_label)}</td>
                     <td>${fr.height.toFixed(1)}</td>
-                    <td>${fr.dp_stack.toFixed(2)}</td>
-                    <td>${fr.dp_wind.toFixed(2)}</td>
-                    <td class="${cls}">${fr.dp_net.toFixed(2)}</td>
-                    <td>${fr.q_leak_closed.toFixed(4)}</td>
+                    <td>${fr.dp_stack.toFixed(2)}<br><small>${dpStackInwg}</small></td>
+                    <td>${fr.dp_wind.toFixed(2)}<br><small>${dpWindInwg}</small></td>
+                    <td class="${cls}">${fr.dp_net.toFixed(2)}<br><small>${dpNetInwg}</small></td>
                     <td>${fr.q_leak_closed_cfm.toFixed(0)}</td>
-                    <td>${fr.q_flow_open > 0 ? fr.q_flow_open.toFixed(4) : '-'}</td>
                     <td>${fr.q_flow_open_cfm > 0 ? fr.q_flow_open_cfm.toFixed(0) : '-'}</td>
-                    <td${fr.f_total > maxForce ? ' class="fail"' : ''}>${fr.f_total.toFixed(1)}</td>
+                    <td${fr.f_total > maxForce ? ' class="fail"' : ''}>${fr.f_total.toFixed(1)}<br><small>${fLbf}</small></td>
                     <td class="${cls}"${title}>${fr.status}</td>
                 </tr>`;
             }
@@ -449,6 +461,27 @@ const Est = (() => {
         html += '</tbody></table>';
 
         document.getElementById('est-sensitivity-content').innerHTML = html;
+    }
+
+    function renderCalculationTraces(data) {
+        if (!data.calculation_traces || data.calculation_traces.length === 0) return;
+        const div = document.getElementById('est-traces-section');
+        if (!div) return;
+        div.style.display = 'block';
+
+        let html = '';
+        for (const tr of data.calculation_traces) {
+            const inputs = Object.entries(tr.inputs || {}).map(([k,v]) => `${esc(k)} = ${esc(v)}`).join(', ');
+            html += `<div class="trace-block">
+                <div class="trace-eq">${esc(tr.equation_id)}: ${esc(tr.description)}</div>
+                <div>Formula: ${esc(tr.formula)}</div>
+                <div>Inputs: ${esc(inputs)}</div>
+                <div>Substitution: ${esc(tr.substitution)}</div>
+                <div>Result: <strong>${esc(tr.result)}</strong></div>
+            </div>`;
+        }
+
+        document.getElementById('est-traces-content').innerHTML = html;
     }
 
     // -----------------------------------------------------------------------
