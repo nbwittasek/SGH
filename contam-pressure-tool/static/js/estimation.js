@@ -21,6 +21,7 @@ const Est = (() => {
     // -----------------------------------------------------------------------
     function init() {
         initTabs();
+        initDropZone();
         addStairwell();  // Start with one stairwell
     }
 
@@ -493,6 +494,157 @@ const Est = (() => {
     }
 
     // -----------------------------------------------------------------------
+    // PRJ Import & Auto-Fill
+    // -----------------------------------------------------------------------
+    function initDropZone() {
+        const banner = document.getElementById('est-drop-banner');
+        const fileInput = document.getElementById('est-prj-input');
+        if (!banner || !fileInput) return;
+
+        // Click banner to browse
+        banner.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'INPUT') fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                importPrjFile(fileInput.files[0]);
+                fileInput.value = '';  // reset so same file can be re-dropped
+            }
+        });
+
+        // Banner drag events
+        banner.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); banner.classList.add('drag-over'); });
+        banner.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); banner.classList.remove('drag-over'); });
+        banner.addEventListener('drop', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            banner.classList.remove('drag-over');
+            const f = e.dataTransfer.files;
+            if (f.length > 0 && f[0].name.toLowerCase().endsWith('.prj')) importPrjFile(f[0]);
+        });
+
+        // Page-level drag/drop (so user can drop anywhere)
+        document.body.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            banner.classList.add('drag-over');
+        });
+        document.body.addEventListener('dragleave', (e) => {
+            if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+                banner.classList.remove('drag-over');
+            }
+        });
+        document.body.addEventListener('drop', (e) => {
+            e.preventDefault();
+            banner.classList.remove('drag-over');
+            const f = e.dataTransfer.files;
+            if (f.length > 0 && f[0].name.toLowerCase().endsWith('.prj')) {
+                importPrjFile(f[0]);
+            }
+        });
+    }
+
+    async function importPrjFile(file) {
+        const banner = document.getElementById('est-drop-banner');
+        const statusSpan = document.getElementById('est-drop-status');
+
+        banner.classList.remove('success', 'error');
+        banner.classList.add('loading');
+        statusSpan.innerHTML = `Parsing <strong>${esc(file.name)}</strong>...`;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const resp = await fetch('/api/estimation/extract-from-prj', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                throw new Error(err.detail || resp.statusText);
+            }
+
+            const data = await resp.json();
+            applyPrjData(data);
+
+            banner.classList.remove('loading');
+            banner.classList.add('success');
+
+            // Build details summary
+            const details = data.detection_details || [];
+            const detailText = details.length > 0
+                ? ' &mdash; ' + details.map(d => esc(d)).join('; ')
+                : '';
+            statusSpan.innerHTML = `Values loaded from <strong>${esc(file.name)}</strong>${detailText}`;
+        } catch (e) {
+            banner.classList.remove('loading');
+            banner.classList.add('error');
+            statusSpan.textContent = 'Error: ' + e.message;
+            setTimeout(() => {
+                banner.classList.remove('error');
+                statusSpan.innerHTML = 'Drop a <strong>.prj</strong> file anywhere to auto-fill from CONTAM model';
+            }, 5000);
+        }
+    }
+
+    function applyPrjData(data) {
+        const b = data.building || {};
+        const c = data.conditions || {};
+        const e = data.elevators || {};
+
+        // --- Building geometry ---
+        setFormVal('est-n-floors-above', b.n_floors_above);
+        setFormVal('est-n-floors-below', b.n_floors_below);
+        setFormVal('est-floor-height', b.floor_height);
+        setFormVal('est-bldg-perimeter', b.building_perimeter);
+        setFormVal('est-floor-area', b.floor_area);
+
+        // --- Design conditions ---
+        if (c.T_outdoor_winter !== undefined) setFormVal('est-t-winter', c.T_outdoor_winter);
+        if (c.wind_speed !== undefined) setFormVal('est-wind-speed', c.wind_speed);
+        if (c.wind_direction !== undefined) setFormVal('est-wind-dir', c.wind_direction);
+
+        // --- Elevators ---
+        if (e.n_shafts !== undefined) setFormVal('est-elev-n', e.n_shafts);
+        if (e.shaft_area !== undefined) setFormVal('est-elev-area', e.shaft_area);
+
+        // --- Fire floor (default to mid-building) ---
+        const totalFloors = (b.n_floors_above || 10) + (b.n_floors_below || 0);
+        setFormVal('est-fire-floor', Math.max(1, Math.floor(totalFloors / 2)));
+
+        // --- Stairwells ---
+        const stairData = data.stairwells || [];
+        if (stairData.length > 0) {
+            // Replace the stairwell array and re-render
+            stairwells = [];
+            for (const s of stairData) {
+                stairwells.push({
+                    label: s.label || `Stair ${String.fromCharCode(65 + stairwells.length)}`,
+                    area: s.area || STAIR_DEFAULTS.area,
+                    doorW: s.doorW || STAIR_DEFAULTS.doorW,
+                    doorH: s.doorH || STAIR_DEFAULTS.doorH,
+                    gap: s.gap || STAIR_DEFAULTS.gap,
+                    doors: s.doors || STAIR_DEFAULTS.doors,
+                    bottom: s.bottom || 1,
+                    top: s.top || totalFloors,
+                    extWalls: s.extWalls ?? STAIR_DEFAULTS.extWalls,
+                    extLen: s.extLen || STAIR_DEFAULTS.extLen,
+                    perim: s.perim || 6 * Math.sqrt((s.area || STAIR_DEFAULTS.area) / 2),
+                });
+            }
+            renderStairwells();
+        }
+    }
+
+    function setFormVal(id, value) {
+        const el = document.getElementById(id);
+        if (el && value !== undefined && value !== null) {
+            el.value = value;
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Bootstrap
     // -----------------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', init);
@@ -504,5 +656,6 @@ const Est = (() => {
         updateStairLabel,
         runEstimation,
         generateReport,
+        importPrjFile,
     };
 })();

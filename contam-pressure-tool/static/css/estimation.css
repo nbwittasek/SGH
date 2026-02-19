@@ -1,5 +1,78 @@
 /* Estimation Tool — Additional Styles */
 
+/* PRJ Import Drop Banner */
+.est-drop-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    background: #f4f7fa;
+    border: 2px dashed #b0bec5;
+    border-radius: 8px;
+    color: #607d8b;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-size: 9.5pt;
+}
+
+.est-drop-banner svg {
+    color: #90a4ae;
+    transition: color 0.25s;
+}
+
+.est-drop-banner:hover {
+    border-color: #2e86de;
+    background: #eaf2fd;
+    color: #2e86de;
+}
+
+.est-drop-banner:hover svg {
+    color: #2e86de;
+}
+
+.est-drop-banner.drag-over {
+    border-color: #2e86de;
+    background: #dbeafe;
+    color: #1565c0;
+    transform: scale(1.01);
+    box-shadow: 0 0 12px rgba(46, 134, 222, 0.15);
+}
+
+.est-drop-banner.loading {
+    border-color: #f39c12;
+    border-style: dashed;
+    color: #e67e22;
+    pointer-events: none;
+}
+
+.est-drop-banner.loading svg {
+    color: #f39c12;
+    animation: spin 0.8s linear infinite;
+}
+
+.est-drop-banner.success {
+    border-color: #27ae60;
+    border-style: solid;
+    color: #1e8449;
+    background: #eafaf1;
+}
+
+.est-drop-banner.success svg {
+    color: #27ae60;
+}
+
+.est-drop-banner.error {
+    border-color: #e74c3c;
+    border-style: solid;
+    color: #c0392b;
+    background: #fdedec;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

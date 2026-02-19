@@ -1293,6 +1293,162 @@ async def estimation_report(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# PRJ → Estimation auto-fill
+# ---------------------------------------------------------------------------
+@app.post("/api/estimation/extract-from-prj")
+async def extract_estimation_from_prj(file: UploadFile = File(...)):
+    """Parse a PRJ file and extract values to pre-fill the estimation form."""
+    if not file.filename or not file.filename.lower().endswith(".prj"):
+        raise HTTPException(400, "Please upload a .prj file")
+
+    # Save uploaded file
+    projects_dir = BASE_DIR / "Projects"
+    projects_dir.mkdir(exist_ok=True)
+    dest = projects_dir / file.filename
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    # Parse
+    try:
+        model = parse_prj_file(str(dest))
+    except Exception as e:
+        raise HTTPException(422, f"Failed to parse PRJ file: {e}")
+
+    # Auto-detect configuration
+    try:
+        config = auto_detect_config(model)
+    except Exception:
+        config = {"stairs": [], "corridors": [], "floor_zones": [], "weather": {}}
+
+    result = _extract_estimation_values(model, config)
+    result["filename"] = file.filename
+    result["project_name"] = model.project_name
+    return result
+
+
+def _extract_estimation_values(model: ParsedModel, config: dict) -> dict:
+    """Map a parsed CONTAM model to estimation form field values."""
+    import re
+    from collections import Counter
+
+    levels = model.levels
+    if not levels:
+        return {}
+
+    # --- Floor count (above / below grade) ---
+    levels_above = [l for l in levels if l.ref_height >= 0]
+    levels_below = [l for l in levels if l.ref_height < 0]
+    n_above = max(len(levels_above), 1)
+    n_below = len(levels_below)
+
+    # --- Floor-to-floor height (most common delta_height) ---
+    heights = [round(l.delta_height, 2) for l in levels if l.delta_height > 0]
+    floor_height = Counter(heights).most_common(1)[0][0] if heights else 3.5
+
+    # --- Floor area (sum zone volumes on a representative mid level) ---
+    mid_level = levels[len(levels) // 2]
+    level_zones = [z for z in model.zones if z.level_num == mid_level.index]
+    total_vol = sum(z.volume for z in level_zones)
+    floor_area = round(total_vol / floor_height, 0) if total_vol > 0 else 1000.0
+
+    # --- Building perimeter (estimate from floor area ≈ square) ---
+    building_perimeter = round(4 * (floor_area ** 0.5), 0)
+
+    # --- Stairwells ---
+    stairwells = []
+    for sg in config.get("stairs", []):
+        zones = sg.get("zones", [])
+        if not zones:
+            continue
+
+        # Cross-section area from zone volumes
+        areas = []
+        for z in zones:
+            vol = z.get("volume", 0)
+            if vol > 0:
+                lvl = next((l for l in levels if l.index == z["level_num"]), None)
+                h = lvl.delta_height if lvl and lvl.delta_height > 0 else floor_height
+                areas.append(vol / h)
+        stair_area = round(sum(areas) / len(areas), 1) if areas else 10.0
+
+        level_nums = sorted(z["level_num"] for z in zones)
+        paths = sg.get("paths", {})
+        n_ext = 1 if paths.get("ext") else 0
+        perim = round(6 * (stair_area / 2) ** 0.5, 1)
+
+        stairwells.append({
+            "label": sg.get("label", f"Stair {chr(65 + len(stairwells))}"),
+            "area": stair_area,
+            "doorW": 1.1,
+            "doorH": 2.1,
+            "gap": 3.0,
+            "doors": 1,
+            "bottom": min(level_nums),
+            "top": max(level_nums),
+            "extWalls": n_ext,
+            "extLen": 4.0,
+            "perim": perim,
+        })
+
+    # --- Elevator shafts ---
+    elev_re = re.compile(r"(?i)(elev|shaft|lift)")
+    exclude_re = re.compile(r"(?i)(stair|vest|corr|hallway|stwr)")
+    elev_groups: dict[str, list] = {}
+    for z in model.zones:
+        if elev_re.search(z.name) and not exclude_re.search(z.name):
+            key = re.sub(r"[_\-\s]", "", z.name).lower()
+            elev_groups.setdefault(key, []).append(z)
+
+    n_elev_shafts = sum(1 for zs in elev_groups.values() if len(zs) >= 2)
+    elev_area = 6.0
+    if elev_groups:
+        areas = []
+        for zs in elev_groups.values():
+            if len(zs) >= 2:
+                for z in zs:
+                    lvl = next((l for l in levels if l.index == z.level_num), None)
+                    h = lvl.delta_height if lvl and lvl.delta_height > 0 else floor_height
+                    if z.volume > 0:
+                        areas.append(z.volume / h)
+        if areas:
+            elev_area = round(sum(areas) / len(areas), 1)
+
+    # --- Weather (Kelvin → °C, m/s direct) ---
+    temp_c, wind_ms, wind_dir = 22.0, 0.0, 0.0
+    if 0 <= model.weather_line_num < len(model.raw_lines):
+        parts = model.raw_lines[model.weather_line_num].split()
+        if len(parts) >= 4:
+            try:
+                temp_c = round(float(parts[0]) - 273.15, 1)
+                wind_ms = round(float(parts[2]), 1)
+                wind_dir = round(float(parts[3]), 0)
+            except (ValueError, IndexError):
+                pass
+
+    return {
+        "building": {
+            "n_floors_above": n_above,
+            "n_floors_below": n_below,
+            "floor_height": floor_height,
+            "building_perimeter": building_perimeter,
+            "floor_area": floor_area,
+        },
+        "stairwells": stairwells,
+        "elevators": {
+            "n_shafts": n_elev_shafts if n_elev_shafts > 0 else 2,
+            "shaft_area": elev_area,
+        },
+        "conditions": {
+            "T_outdoor_winter": temp_c,
+            "wind_speed": wind_ms,
+            "wind_direction": wind_dir,
+        },
+        "detection_details": config.get("detection_details", []),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
