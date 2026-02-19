@@ -1455,6 +1455,14 @@ const App = (() => {
         window.open('/api/results/export/report', '_blank');
     }
 
+    function generateModelReport() {
+        if (currentModelId) {
+            window.open(`/api/model/${currentModelId}/report`, '_blank');
+        } else {
+            alert('No model loaded. Parse a PRJ file first.');
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // File Browser
     // ---------------------------------------------------------------------------
@@ -1873,6 +1881,7 @@ const App = (() => {
         exportSummaryCSV,
         exportDetailedCSV,
         generateReport,
+        generateModelReport,
         browseFolder,
         navigateBrowser,
         browserItemClick,

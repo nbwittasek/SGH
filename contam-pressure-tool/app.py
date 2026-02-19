@@ -335,8 +335,20 @@ async def upload_model(file: UploadFile = File(...)):
             contam_exe = found
             app_config["contam_executable_default"] = found
 
-    # Auto-configure
-    auto_config = auto_detect_config(model)
+    # Auto-configure (graceful fallback if detection fails)
+    try:
+        auto_config = auto_detect_config(model)
+    except Exception as e:
+        logger.warning("Auto-detect config failed for upload: %s", e)
+        auto_config = {
+            "stairs": [], "corridors": [], "floor_zones": [],
+            "roof_configs": [], "supply_ahs": None, "return_ahs": None,
+            "corridor_path_element": None, "weather": {},
+            "confidence": "low", "detection_details": [],
+            "summary": {"stairs_detected": 0, "corridors_detected": 0,
+                        "stair_names": [], "corridor_names": [],
+                        "vestibules_detected": 0},
+        }
 
     # Enrich with level-zone maps (same logic as /auto-configure)
     for stair in auto_config["stairs"]:
@@ -525,6 +537,23 @@ async def get_ahs(model_id: str):
         }
         for ahs in model.ahs_systems
     ]
+
+
+@app.get("/api/model/{model_id}/report", response_class=HTMLResponse)
+async def model_report(model_id: str):
+    """Generate a print-optimized HTML model overview report."""
+    model = parsed_models.get(model_id)
+    if not model:
+        raise HTTPException(404, "Model not found")
+
+    from core.model_report import generate_model_report_html
+    try:
+        ac = auto_detect_config(model)
+    except Exception:
+        ac = None
+
+    html = generate_model_report_html(model, ac)
+    return HTMLResponse(content=html)
 
 
 @app.get("/api/model/{model_id}/suggestions")

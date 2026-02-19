@@ -7,16 +7,15 @@ Usage:
     python prj_viewer.py
 """
 
-import json
 import os
 import sys
 import uuid
 import webbrowser
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 
 # Ensure core module is importable
@@ -333,6 +332,7 @@ tr:hover td { background: var(--accent-light); }
     <h1>CONTAM PRJ Viewer</h1>
     <span class="subtitle">Drop a file to explore</span>
     <span class="file-name" id="file-name"></span>
+    <button class="new-btn" id="report-btn" style="display:none" onclick="generateReport()">Generate Report</button>
     <button class="new-btn" id="new-file-btn" style="display:none" onclick="resetView()">New File</button>
 </div>
 
@@ -440,6 +440,7 @@ tr:hover td { background: var(--accent-light); }
 <script>
 const V = (() => {
     let data = null;
+    let currentModelId = null;
     let allZones = [], allElements = [], allPaths = [];
 
     // -----------------------------------------------------------------------
@@ -516,6 +517,7 @@ const V = (() => {
             }
 
             data = await resp.json();
+            currentModelId = data.model_id;
             st.textContent = 'Rendering...';
             render(data, file.name);
 
@@ -536,6 +538,7 @@ const V = (() => {
 
         // Header
         document.getElementById('file-name').textContent = fileName;
+        document.getElementById('report-btn').style.display = '';
         document.getElementById('new-file-btn').style.display = '';
 
         // Summary badges
@@ -725,7 +728,7 @@ const V = (() => {
     }
 
     document.addEventListener('DOMContentLoaded', init);
-    return {};
+    return { getModelId: () => currentModelId };
 })();
 
 function resetView() {
@@ -734,9 +737,16 @@ function resetView() {
     document.getElementById('spinner').style.display = 'none';
     document.getElementById('results').classList.remove('visible');
     document.getElementById('file-name').textContent = '';
+    document.getElementById('report-btn').style.display = 'none';
     document.getElementById('new-file-btn').style.display = 'none';
     document.getElementById('config-banner').style.display = 'none';
     document.getElementById('file-input').value = '';
+}
+
+function generateReport() {
+    if (V.getModelId()) {
+        window.open('/api/report/' + V.getModelId(), '_blank');
+    }
 }
 </script>
 </body>
@@ -826,6 +836,26 @@ async def parse_upload(file: UploadFile = File(...)):
         "ahs": ahs_data,
         "auto_config": auto_config,
     }
+
+
+# ---------------------------------------------------------------------------
+# Report generation
+# ---------------------------------------------------------------------------
+@app.get("/api/report/{model_id}", response_class=HTMLResponse)
+async def generate_report(model_id: str):
+    """Generate a beautiful, print-optimized HTML report for the parsed model."""
+    model = parsed_models.get(model_id)
+    if not model:
+        raise HTTPException(404, "Model not found — parse a file first")
+
+    try:
+        ac = auto_detect_config(model)
+    except Exception:
+        ac = None
+
+    from core.model_report import generate_model_report_html
+    html = generate_model_report_html(model, ac)
+    return HTMLResponse(content=html)
 
 
 # ---------------------------------------------------------------------------
