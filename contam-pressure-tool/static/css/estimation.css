@@ -1,0 +1,139 @@
+/* Estimation Tool — Additional Styles */
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.stair-card {
+    background: #f8f9fa;
+    border: 1px solid #dde2e8;
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 16px;
+}
+
+.stair-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dde2e8;
+}
+
+.stair-card-header strong {
+    font-size: 11pt;
+    color: #2e86de;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: #fff;
+    border-color: #c0392b;
+}
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+/* Results Tables */
+.est-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin-bottom: 16px;
+}
+
+.est-table th {
+    background: #2e3a4e;
+    color: #fff;
+    padding: 5px 8px;
+    text-align: center;
+    font-weight: 600;
+    white-space: nowrap;
+    font-size: 8pt;
+}
+
+.est-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid #ecf0f4;
+    text-align: center;
+}
+
+.est-table .level-cell {
+    text-align: left;
+    font-weight: 600;
+    background: #f8f9fa;
+}
+
+.est-table td.pass {
+    background: rgba(39, 174, 96, 0.12);
+    color: #1e8449;
+    font-weight: 600;
+}
+
+.est-table td.fail {
+    background: rgba(231, 76, 60, 0.12);
+    color: #c0392b;
+    font-weight: 700;
+}
+
+.est-table .highlight-row {
+    background: #f0f7ff;
+}
+
+.est-table .highlight-row td {
+    border-top: 2px solid #2e86de;
+    border-bottom: 2px solid #2e86de;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 10pt;
+}
+
+.badge-pass {
+    background: #27ae60;
+    color: #fff;
+}
+
+.badge-fail {
+    background: #e74c3c;
+    color: #fff;
+}
+
+/* Warning box */
+.warn-box {
+    background: rgba(243, 156, 18, 0.1);
+    border: 1px solid #f39c12;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 9pt;
+    color: #7d6608;
+}
+
+.warn-box p {
+    margin: 4px 0;
+}
+
+/* Tab panel sections */
+#est-run h3 {
+    font-size: 12pt;
+    color: #2e86de;
+    border-bottom: 1px solid #dde2e8;
+    padding-bottom: 4px;
+    margin: 20px 0 10px;
+}
+
+#est-run h4 {
+    font-size: 10pt;
+    color: #555;
+    margin: 12px 0 6px;
+}

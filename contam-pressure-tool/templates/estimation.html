@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stair Pressurization Estimation Tool &mdash; SGH</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=12">
+    <link rel="stylesheet" href="/static/css/estimation.css?v=1">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>ESTIMATION</h1>
+                <p class="subtitle">Stair Pressurization</p>
+                <p class="brand">SGH</p>
+            </div>
+            <ul class="nav-tabs">
+                <li class="nav-tab active" data-tab="est-inputs">
+                    <span class="tab-num">1</span>
+                    <span class="tab-label">Building Inputs</span>
+                </li>
+                <li class="nav-tab" data-tab="est-stairwells">
+                    <span class="tab-num">2</span>
+                    <span class="tab-label">Stairwell &amp; Elevator</span>
+                </li>
+                <li class="nav-tab" data-tab="est-conditions">
+                    <span class="tab-num">3</span>
+                    <span class="tab-label">Design Conditions</span>
+                </li>
+                <li class="nav-tab" data-tab="est-run">
+                    <span class="tab-num">4</span>
+                    <span class="tab-label">Run &amp; Results</span>
+                </li>
+            </ul>
+            <div style="padding:12px;margin-top:auto;">
+                <a href="/" class="btn btn-sm" style="display:block;text-align:center;text-decoration:none;">
+                    &larr; Back to CONTAM Tool
+                </a>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="content">
+            <!-- Tab 1: Building Inputs -->
+            <section id="est-inputs" class="tab-panel active">
+                <h2>Building Geometry &amp; Leakage</h2>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="est-n-floors-above">Floors above grade (N)</label>
+                        <input type="number" id="est-n-floors-above" value="10" min="2" max="99">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-n-floors-below">Floors below grade (N_b)</label>
+                        <input type="number" id="est-n-floors-below" value="0" min="0" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-floor-height">Floor-to-floor height (m)</label>
+                        <input type="number" id="est-floor-height" value="3.5" step="0.1" min="2.5" max="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-bldg-perimeter">Building perimeter (m)</label>
+                        <input type="number" id="est-bldg-perimeter" value="120" min="20" max="600">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-floor-area">Floor area (m&sup2;)</label>
+                        <input type="number" id="est-floor-area" value="1000" min="100" max="10000">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-wall-construction">Wall construction</label>
+                        <select id="est-wall-construction">
+                            <option value="tight">Tight</option>
+                            <option value="average" selected>Average</option>
+                            <option value="loose">Loose</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3>Leakage Tightness</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="est-leak-ext-wall">Exterior walls</label>
+                        <select id="est-leak-ext-wall">
+                            <option value="tight">Tight</option>
+                            <option value="average" selected>Average</option>
+                            <option value="loose">Loose</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-leak-int-wall">Interior walls</label>
+                        <select id="est-leak-int-wall">
+                            <option value="tight">Tight</option>
+                            <option value="average" selected>Average</option>
+                            <option value="loose">Loose</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-leak-floor">Floor/ceiling</label>
+                        <select id="est-leak-floor">
+                            <option value="tight">Tight</option>
+                            <option value="average" selected>Average</option>
+                            <option value="loose">Loose</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-leak-stair-door">Stair doors</label>
+                        <select id="est-leak-stair-door">
+                            <option value="tight">Tight (0.01 m&sup2;)</option>
+                            <option value="average" selected>Average (0.02 m&sup2;)</option>
+                            <option value="loose">Loose (0.04 m&sup2;)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-leak-elev-door">Elevator doors</label>
+                        <select id="est-leak-elev-door">
+                            <option value="tight">Tight (0.02 m&sup2;)</option>
+                            <option value="average" selected>Average (0.06 m&sup2;)</option>
+                            <option value="loose">Loose (0.11 m&sup2;)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="btn-row" style="margin-top:16px;">
+                    <button class="btn btn-primary" onclick="Est.nextTab('est-stairwells')">Next: Stairwell &amp; Elevator &rarr;</button>
+                </div>
+            </section>
+
+            <!-- Tab 2: Stairwell & Elevator -->
+            <section id="est-stairwells" class="tab-panel">
+                <h2>Stairwell Geometry</h2>
+                <div class="btn-row" style="margin-bottom:12px;">
+                    <button class="btn btn-sm" onclick="Est.addStairwell()">+ Add Stairwell</button>
+                </div>
+                <div id="stairwell-list"></div>
+
+                <h2 style="margin-top:24px;">Elevator Shafts</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="est-elev-n">Number of shafts</label>
+                        <input type="number" id="est-elev-n" value="2" min="0" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-elev-area">Shaft area (m&sup2;)</label>
+                        <input type="number" id="est-elev-area" value="6" step="0.5" min="2" max="30">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-elev-door-type">Door type</label>
+                        <select id="est-elev-door-type">
+                            <option value="single-slide">Single Slide</option>
+                            <option value="center-opening" selected>Center Opening</option>
+                            <option value="freight">Freight</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-elev-vent">Vent area at top (m&sup2;)</label>
+                        <input type="number" id="est-elev-vent" value="0" step="0.05" min="0" max="1">
+                    </div>
+                </div>
+
+                <div class="btn-row" style="margin-top:16px;">
+                    <button class="btn" onclick="Est.nextTab('est-inputs')">&larr; Back</button>
+                    <button class="btn btn-primary" onclick="Est.nextTab('est-conditions')">Next: Design Conditions &rarr;</button>
+                </div>
+            </section>
+
+            <!-- Tab 3: Design Conditions -->
+            <section id="est-conditions" class="tab-panel">
+                <h2>Design Conditions</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="est-t-winter">Outdoor winter temp (&deg;C)</label>
+                        <input type="number" id="est-t-winter" value="-18" step="1" min="-40" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-t-summer">Outdoor summer temp (&deg;C)</label>
+                        <input type="number" id="est-t-summer" value="35" step="1" min="25" max="45">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-t-indoor">Indoor temp (&deg;C)</label>
+                        <input type="number" id="est-t-indoor" value="22" step="0.5" min="18" max="26">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-t-fire">Fire floor gas temp (&deg;C)</label>
+                        <input type="number" id="est-t-fire" value="300" step="50" min="100" max="900">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-wind-speed">Wind speed (m/s)</label>
+                        <input type="number" id="est-wind-speed" value="12" step="1" min="0" max="40">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-wind-dir">Wind direction (&deg;)</label>
+                        <input type="number" id="est-wind-dir" value="0" step="45" min="0" max="360">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-p-atm">Atmospheric pressure (Pa)</label>
+                        <input type="number" id="est-p-atm" value="101325" step="100" min="90000" max="105000">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-n-open-doors">Open stair doors (n_open)</label>
+                        <input type="number" id="est-n-open-doors" value="1" min="0" max="3">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-sprinklered">Sprinklered?</label>
+                        <select id="est-sprinklered">
+                            <option value="yes" selected>Yes</option>
+                            <option value="no">No</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="est-fire-hrr">Design fire HRR (kW)</label>
+                        <input type="number" id="est-fire-hrr" value="2000" step="100" min="100" max="15000">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-fire-floor">Fire floor number</label>
+                        <input type="number" id="est-fire-floor" value="5" min="1" max="99">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-stair-temp">Stairwell temp assumption</label>
+                        <select id="est-stair-temp">
+                            <option value="outdoor" selected>Outdoor temp (unheated)</option>
+                            <option value="indoor">Indoor temp (conditioned)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3>Design Criteria</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="est-min-dp">Min &Delta;P closed door (Pa)</label>
+                        <input type="number" id="est-min-dp" value="12.5" step="0.5" min="5" max="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-max-dp">Max &Delta;P closed door (Pa)</label>
+                        <input type="number" id="est-max-dp" value="87" step="1" min="30" max="120">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-max-force">Max door force (N)</label>
+                        <input type="number" id="est-max-force" value="133" step="1" min="80" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-exhaust-dp">Floor exhaust &Delta;P (Pa)</label>
+                        <input type="number" id="est-exhaust-dp" value="25" step="1" min="10" max="75">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-closer-force">Door closer force (N)</label>
+                        <input type="number" id="est-closer-force" value="55" step="5" min="20" max="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="est-min-velocity">Min door velocity (m/s)</label>
+                        <input type="number" id="est-min-velocity" value="1.0" step="0.1" min="0.5" max="3">
+                    </div>
+                </div>
+
+                <div class="btn-row" style="margin-top:16px;">
+                    <button class="btn" onclick="Est.nextTab('est-stairwells')">&larr; Back</button>
+                    <button class="btn btn-primary" onclick="Est.runEstimation()">Run Estimation</button>
+                </div>
+            </section>
+
+            <!-- Tab 4: Results -->
+            <section id="est-run" class="tab-panel">
+                <h2>Estimation Results</h2>
+                <div id="est-status" class="status-msg"></div>
+                <div id="est-warnings" style="display:none;"></div>
+
+                <!-- System Summary -->
+                <div id="est-system-summary" style="display:none;">
+                    <h3>System Summary</h3>
+                    <div id="est-summary-content"></div>
+                </div>
+
+                <!-- Floor-by-Floor Tables -->
+                <div id="est-floor-tables" style="display:none;">
+                    <h3>Floor-by-Floor Results</h3>
+                    <div id="est-floor-content"></div>
+                </div>
+
+                <!-- Exhaust Breakdown -->
+                <div id="est-exhaust-section" style="display:none;">
+                    <h3>Fire Floor Exhaust Breakdown</h3>
+                    <div id="est-exhaust-content"></div>
+                </div>
+
+                <!-- Sensitivity Analysis -->
+                <div id="est-sensitivity-section" style="display:none;">
+                    <h3>Sensitivity Analysis</h3>
+                    <div id="est-sensitivity-content"></div>
+                </div>
+
+                <div class="btn-row" style="margin-top:16px;" id="est-report-btns" style="display:none;">
+                    <button class="btn" onclick="Est.nextTab('est-conditions')">&larr; Back to Inputs</button>
+                    <button class="btn btn-primary" onclick="Est.generateReport()">Generate Report (HTML)</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/estimation.js?v=1"></script>
+</body>
+</html>
