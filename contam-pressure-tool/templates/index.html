@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CONTAM Pressurization Tool — SGH</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=12">
+    <link rel="stylesheet" href="/static/css/style.css?v=13">
 </head>
 <body>
     <div class="app-layout">
@@ -50,31 +50,58 @@
 
         <!-- Main Content -->
         <main class="content">
-            <!-- Tab 1: Project Setup -->
+            <!-- Tab 1: Project Setup — Drop Zone Landing -->
             <section id="project-setup" class="tab-panel active">
-                <h2>Project Setup</h2>
-                <div class="form-group">
-                    <label for="project-name">Project Name</label>
-                    <input type="text" id="project-name" placeholder="e.g., 5411 Wilshire">
-                </div>
-                <div class="form-group">
-                    <label for="project-folder">Project Folder</label>
-                    <div class="input-with-btn">
-                        <input type="text" id="project-folder" placeholder="Select or enter project folder path">
-                        <button class="btn btn-sm" onclick="App.browseFolder('project-folder')">Browse</button>
+                <div id="drop-zone-landing" class="drop-zone-landing">
+                    <div class="drop-zone" id="drop-zone">
+                        <div class="drop-zone-icon">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="12" y1="18" x2="12" y2="12"></line>
+                                <line x1="9" y1="15" x2="12" y2="12"></line>
+                                <line x1="15" y1="15" x2="12" y2="12"></line>
+                            </svg>
+                        </div>
+                        <h2>Drop your .prj file here</h2>
+                        <p>or click to browse</p>
+                        <input type="file" id="prj-file-input" accept=".prj" style="display:none">
+                        <div class="drop-zone-hint">CONTAM project files (.prj) are automatically parsed and configured</div>
+                    </div>
+                    <div id="upload-progress" class="upload-progress" style="display:none;">
+                        <div class="upload-spinner"></div>
+                        <p id="upload-status-text">Uploading and parsing...</p>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="contam-exe">CONTAM Executable Path</label>
-                    <div class="input-with-btn">
-                        <input type="text" id="contam-exe" placeholder="Path to contamX3.exe">
-                        <button class="btn btn-sm" onclick="App.detectContam()">Auto-Detect</button>
+
+                <!-- Advanced setup (collapsed by default) -->
+                <details class="advanced-setup">
+                    <summary>Advanced: Manual Project Setup</summary>
+                    <div style="padding: 1rem 0;">
+                        <div class="form-group">
+                            <label for="project-name">Project Name</label>
+                            <input type="text" id="project-name" placeholder="e.g., 5411 Wilshire">
+                        </div>
+                        <div class="form-group">
+                            <label for="project-folder">Project Folder</label>
+                            <div class="input-with-btn">
+                                <input type="text" id="project-folder" placeholder="Select or enter project folder path">
+                                <button class="btn btn-sm" onclick="App.browseFolder('project-folder')">Browse</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="contam-exe">CONTAM Executable Path</label>
+                            <div class="input-with-btn">
+                                <input type="text" id="contam-exe" placeholder="Path to contamX3.exe">
+                                <button class="btn btn-sm" onclick="App.detectContam()">Auto-Detect</button>
+                            </div>
+                        </div>
+                        <div class="btn-row">
+                            <button class="btn btn-primary" onclick="App.createProject()">Create New Project</button>
+                            <button class="btn" onclick="App.openProject()">Open Existing Project</button>
+                        </div>
                     </div>
-                </div>
-                <div class="btn-row">
-                    <button class="btn btn-primary" onclick="App.createProject()">Create New Project</button>
-                    <button class="btn" onclick="App.openProject()">Open Existing Project</button>
-                </div>
+                </details>
                 <div id="recent-projects" class="recent-projects">
                     <h3>Recent Projects</h3>
                     <ul id="recent-list"></ul>
@@ -385,6 +412,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=12"></script>
+    <script src="/static/js/app.js?v=13"></script>
 </body>
 </html>

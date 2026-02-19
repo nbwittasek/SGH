@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -279,6 +279,151 @@ async def parse_model(request: Request):
         "num_flow_elements": len(model.flow_elements),
         "num_airflow_paths": len(model.airflow_paths),
         "num_ahs": len(model.ahs_systems),
+    }
+
+
+@app.post("/api/model/upload")
+async def upload_model(file: UploadFile = File(...)):
+    """Accept a .prj file upload, save it locally, parse it, auto-configure,
+    and return everything the frontend needs in one response."""
+    if not file.filename or not file.filename.lower().endswith(".prj"):
+        raise HTTPException(400, "Please upload a .prj file")
+
+    # Save uploaded file to a Projects subdirectory
+    projects_dir = BASE_DIR / "Projects"
+    projects_dir.mkdir(exist_ok=True)
+    dest = projects_dir / file.filename
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    # Parse the file
+    try:
+        model = parse_prj_file(str(dest))
+    except Exception as e:
+        raise HTTPException(422, f"Failed to parse PRJ file: {e}")
+
+    model_id = str(uuid.uuid4())[:8]
+    parsed_models[model_id] = model
+
+    # Set up a project automatically
+    global current_project
+    project_name = dest.stem
+    (projects_dir / "analysis").mkdir(exist_ok=True)
+
+    current_project = {
+        "project_name": project_name,
+        "project_folder": str(projects_dir),
+        "contam_executable": app_config.get("contam_executable_default", ""),
+        "base_models": {project_name: str(dest)},
+        "num_stairs": 0,
+        "num_corridors": 0,
+        "stair_labels": [],
+        "stair_pressurization": {},
+        "corridor_depressurization": {},
+        "roof_stair_depressurization": {},
+        "airflow_paths": {"stairs": {}, "corridors": []},
+        "scenarios": [],
+        "acceptance_criteria": {"min_dp_inwc": 0.05, "max_dp_inwc": 0.45},
+    }
+
+    # Auto-detect CONTAM executable
+    contam_exe = app_config.get("contam_executable_default", "")
+    if not contam_exe:
+        found = find_contam_executable()
+        if found:
+            contam_exe = found
+            app_config["contam_executable_default"] = found
+
+    # Auto-configure
+    auto_config = auto_detect_config(model)
+
+    # Enrich with level-zone maps (same logic as /auto-configure)
+    for stair in auto_config["stairs"]:
+        level_zone_map = {}
+        for z in stair["zones"]:
+            level_zone_map[z["level_num"]] = z
+        stair["level_zone_map"] = level_zone_map
+
+    for corridor in auto_config["corridors"]:
+        level_zone_map = {}
+        for z in corridor["zones"]:
+            level_zone_map[z["level_num"]] = z
+        corridor["level_zone_map"] = level_zone_map
+
+    auto_config["levels"] = [
+        {"index": lvl.index, "name": lvl.name}
+        for lvl in model.levels
+    ]
+
+    if model.ahs_systems:
+        auto_config["ahs_systems"] = [
+            {"id": ahs.id, "name": ahs.name}
+            for ahs in model.ahs_systems
+        ]
+    else:
+        auto_config["ahs_systems"] = [
+            {"id": 1, "name": "SUPPLY (auto-created)"},
+            {"id": 2, "name": "RETURN (auto-created)"},
+        ]
+        auto_config["supply_ahs"] = {"id": 1, "name": "SUPPLY (auto-created)"}
+        auto_config["return_ahs"] = {"id": 2, "name": "RETURN (auto-created)"}
+        for stair in auto_config["stairs"]:
+            if not stair.get("ahs_id"):
+                stair["ahs_id"] = 1
+        for corridor in auto_config["corridors"]:
+            if not corridor.get("ahs_id"):
+                corridor["ahs_id"] = 2
+        auto_config["ahs_auto_created"] = True
+
+    # Build model summary
+    levels_data = [
+        {"index": lvl.index, "name": lvl.name, "ref_height": lvl.ref_height,
+         "delta_height": lvl.delta_height, "num_icons": lvl.num_icons}
+        for lvl in model.levels
+    ]
+    zones_data = [
+        {"id": z.id, "name": z.name, "display_name": get_zone_display_name(z),
+         "level_num": z.level_num, "level_name": z.level_name,
+         "volume": z.volume, "temperature": z.temperature}
+        for z in model.zones
+    ]
+    elements_data = [
+        {"id": elem.id, "name": elem.name, "type": elem.elem_type}
+        for elem in model.flow_elements
+    ]
+    paths_data = [
+        {"id": p.id, "from_zone": p.from_zone, "to_zone": p.to_zone,
+         "flow_elem_id": p.flow_elem_id, "flow_elem_name": p.flow_elem_name,
+         "ahs": p.ahs, "level_num": p.level_num, "multiplier": p.multiplier,
+         "icon_type": p.icon_type, "direction": p.direction}
+        for p in model.airflow_paths
+    ]
+    ahs_data = [
+        {"id": ahs.id, "name": ahs.name, "return_zone": ahs.return_zone,
+         "supply_zone": ahs.supply_zone, "return_path": ahs.return_path,
+         "supply_path": ahs.supply_path, "exhaust_path": ahs.exhaust_path}
+        for ahs in model.ahs_systems
+    ]
+
+    return {
+        "model_id": model_id,
+        "filepath": str(dest),
+        "project_name": project_name,
+        "project_folder": str(projects_dir),
+        "contam_exe": contam_exe,
+        "version": model.version,
+        "num_levels": len(model.levels),
+        "num_zones": len(model.zones),
+        "num_flow_elements": len(model.flow_elements),
+        "num_airflow_paths": len(model.airflow_paths),
+        "num_ahs": len(model.ahs_systems),
+        "levels": levels_data,
+        "zones": zones_data,
+        "elements": elements_data,
+        "paths": paths_data,
+        "ahs": ahs_data,
+        "auto_config": auto_config,
     }
 
 

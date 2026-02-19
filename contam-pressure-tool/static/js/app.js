@@ -166,10 +166,7 @@ const App = (() => {
     async function loadLevels() {
         const data = await api('GET', `/api/model/${currentModelId}/levels`);
         modelData.levels = data;
-        const tbody = document.querySelector('#tbl-levels tbody');
-        tbody.innerHTML = data.map(l =>
-            `<tr><td>${l.index}</td><td>${l.name}</td><td>${l.ref_height.toFixed(3)}</td><td>${l.delta_height.toFixed(3)}</td><td>${l.num_icons}</td></tr>`
-        ).join('');
+        renderLevelsTable(data);
     }
 
     async function loadZones() {
@@ -177,15 +174,7 @@ const App = (() => {
         modelData.zones = data;
         allZones = data;
         renderZonesTable(data);
-
-        // Populate level filter
-        const filter = document.getElementById('zone-level-filter');
-        filter.innerHTML = '<option value="">All Levels</option>';
-        const levels = [...new Set(data.map(z => z.level_num))].sort((a, b) => a - b);
-        levels.forEach(l => {
-            const lvlName = data.find(z => z.level_num === l)?.level_name || l;
-            filter.innerHTML += `<option value="${l}">${lvlName} (${l})</option>`;
-        });
+        populateZoneLevelFilter(data);
     }
 
     function renderZonesTable(zones) {
@@ -207,10 +196,7 @@ const App = (() => {
     async function loadAHS() {
         const data = await api('GET', `/api/model/${currentModelId}/ahs`);
         modelData.ahs = data;
-        const tbody = document.querySelector('#tbl-ahs tbody');
-        tbody.innerHTML = data.map(a =>
-            `<tr><td>${a.id}</td><td>${a.name}</td><td>${a.return_zone}</td><td>${a.supply_zone}</td><td>${a.return_path}</td><td>${a.supply_path}</td><td>${a.exhaust_path}</td></tr>`
-        ).join('');
+        renderAHSTable(data);
     }
 
     async function loadElements() {
@@ -238,19 +224,7 @@ const App = (() => {
         modelData.paths = data;
         allPaths = data;
         renderPathsTable(data);
-
-        // Populate path filters
-        const levelFilter = document.getElementById('path-level-filter');
-        levelFilter.innerHTML = '<option value="">All</option>';
-        [...new Set(data.map(p => p.level_num))].sort((a, b) => a - b).forEach(l => {
-            levelFilter.innerHTML += `<option value="${l}">${l}</option>`;
-        });
-
-        const elemFilter = document.getElementById('path-elem-filter');
-        elemFilter.innerHTML = '<option value="">All</option>';
-        [...new Set(data.map(p => p.flow_elem_name))].sort().forEach(n => {
-            elemFilter.innerHTML += `<option value="${n}">${n}</option>`;
-        });
+        populatePathFilters(data);
     }
 
     function renderPathsTable(paths) {
@@ -1627,6 +1601,222 @@ const App = (() => {
     }
 
     // ---------------------------------------------------------------------------
+    // Drag & Drop Upload
+    // ---------------------------------------------------------------------------
+    function initDropZone() {
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('prj-file-input');
+        if (!dropZone || !fileInput) return;
+
+        // Click to browse
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        // File input change
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                handleFileUpload(fileInput.files[0]);
+            }
+        });
+
+        // Drag events
+        dropZone.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drag-over');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.name.toLowerCase().endsWith('.prj')) {
+                    handleFileUpload(file);
+                } else {
+                    alert('Please drop a .prj file.');
+                }
+            }
+        });
+
+        // Also support page-level drop (in case they miss the zone)
+        document.body.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (document.getElementById('drop-zone-landing')?.style.display !== 'none') {
+                dropZone.classList.add('drag-over');
+            }
+        });
+        document.body.addEventListener('dragleave', (e) => {
+            if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+                dropZone.classList.remove('drag-over');
+            }
+        });
+        document.body.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].name.toLowerCase().endsWith('.prj')) {
+                if (document.getElementById('drop-zone-landing')?.style.display !== 'none') {
+                    handleFileUpload(files[0]);
+                }
+            }
+        });
+    }
+
+    async function handleFileUpload(file) {
+        const dropZone = document.getElementById('drop-zone');
+        const uploadProgress = document.getElementById('upload-progress');
+        const statusText = document.getElementById('upload-status-text');
+
+        // Show progress, hide drop zone
+        dropZone.style.display = 'none';
+        uploadProgress.style.display = 'flex';
+        statusText.textContent = `Uploading ${file.name}...`;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            statusText.textContent = `Parsing ${file.name}...`;
+
+            const resp = await fetch('/api/model/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                throw new Error(err.detail || resp.statusText);
+            }
+
+            const data = await resp.json();
+            statusText.textContent = 'Auto-configuring...';
+
+            // Apply everything from the upload response
+            applyUploadResult(data);
+
+            statusText.textContent = 'Done!';
+
+            // Brief pause, then switch to config tab
+            await new Promise(r => setTimeout(r, 500));
+            document.getElementById('drop-zone-landing').style.display = 'none';
+            uploadProgress.style.display = 'none';
+
+        } catch (e) {
+            // Show drop zone again on error
+            dropZone.style.display = '';
+            uploadProgress.style.display = 'none';
+            alert('Upload failed: ' + e.message);
+        }
+    }
+
+    function applyUploadResult(data) {
+        // Set project fields
+        const nameEl = document.getElementById('project-name');
+        const folderEl = document.getElementById('project-folder');
+        const exeEl = document.getElementById('contam-exe');
+        const prjEl = document.getElementById('prj-filepath');
+
+        if (nameEl) nameEl.value = data.project_name;
+        if (folderEl) folderEl.value = data.project_folder;
+        if (exeEl) exeEl.value = data.contam_exe || '';
+        if (prjEl) prjEl.value = data.filepath;
+
+        // Set model id and populate all model data
+        currentModelId = data.model_id;
+        modelData.levels = data.levels;
+        modelData.zones = data.zones;
+        modelData.elements = data.elements;
+        modelData.paths = data.paths;
+        modelData.ahs = data.ahs;
+        allZones = data.zones;
+        allElements = data.elements;
+        allPaths = data.paths;
+
+        // Update badges
+        document.getElementById('badge-levels').textContent = 'Levels: ' + data.num_levels;
+        document.getElementById('badge-zones').textContent = 'Zones: ' + data.num_zones;
+        document.getElementById('badge-elements').textContent = 'Elements: ' + data.num_flow_elements;
+        document.getElementById('badge-paths').textContent = 'Paths: ' + data.num_airflow_paths;
+        document.getElementById('badge-ahs').textContent = 'AHS: ' + data.num_ahs;
+        document.getElementById('parsed-data').style.display = 'block';
+
+        // Render data tables
+        renderLevelsTable(data.levels);
+        renderZonesTable(data.zones);
+        renderAHSTable(data.ahs);
+        renderElementsTable(data.elements);
+        renderPathsTable(data.paths);
+        populateZoneLevelFilter(data.zones);
+        populatePathFilters(data.paths);
+
+        // Populate config dropdowns
+        populateDropdowns();
+
+        // Apply auto-config suggestions
+        lastSuggestions = data.auto_config;
+        if (lastSuggestions && lastSuggestions.confidence !== 'low') {
+            applySuggestions();
+            showAutoConfigBanner(lastSuggestions);
+            switchToTab('pressurization');
+        }
+
+        showStatus('parse-status', `Parsed successfully: ${data.project_name} (${data.version})`, 'success');
+    }
+
+    function renderLevelsTable(levels) {
+        const tbody = document.querySelector('#tbl-levels tbody');
+        tbody.innerHTML = levels.map(l =>
+            `<tr><td>${l.index}</td><td>${l.name}</td><td>${l.ref_height.toFixed(3)}</td><td>${l.delta_height.toFixed(3)}</td><td>${l.num_icons}</td></tr>`
+        ).join('');
+    }
+
+    function renderAHSTable(ahsList) {
+        const tbody = document.querySelector('#tbl-ahs tbody');
+        tbody.innerHTML = ahsList.map(a =>
+            `<tr><td>${a.id}</td><td>${a.name}</td><td>${a.return_zone}</td><td>${a.supply_zone}</td><td>${a.return_path}</td><td>${a.supply_path}</td><td>${a.exhaust_path}</td></tr>`
+        ).join('');
+    }
+
+    function populateZoneLevelFilter(zones) {
+        const filter = document.getElementById('zone-level-filter');
+        filter.innerHTML = '<option value="">All Levels</option>';
+        const levels = [...new Set(zones.map(z => z.level_num))].sort((a, b) => a - b);
+        levels.forEach(l => {
+            const lvlName = zones.find(z => z.level_num === l)?.level_name || l;
+            filter.innerHTML += `<option value="${l}">${lvlName} (${l})</option>`;
+        });
+    }
+
+    function populatePathFilters(paths) {
+        const levelFilter = document.getElementById('path-level-filter');
+        levelFilter.innerHTML = '<option value="">All</option>';
+        [...new Set(paths.map(p => p.level_num))].sort((a, b) => a - b).forEach(l => {
+            levelFilter.innerHTML += `<option value="${l}">${l}</option>`;
+        });
+
+        const elemFilter = document.getElementById('path-elem-filter');
+        elemFilter.innerHTML = '<option value="">All</option>';
+        [...new Set(paths.map(p => p.flow_elem_name))].sort().forEach(n => {
+            elemFilter.innerHTML += `<option value="${n}">${n}</option>`;
+        });
+    }
+
+    // ---------------------------------------------------------------------------
     // Init
     // ---------------------------------------------------------------------------
     function initScenarioSelectAll() {
@@ -1644,6 +1834,7 @@ const App = (() => {
     function init() {
         initTabs();
         initScenarioSelectAll();
+        initDropZone();
         loadRecentProjects();
         loadResultsScenarios();
     }
