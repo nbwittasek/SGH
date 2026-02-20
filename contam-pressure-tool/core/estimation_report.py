@@ -126,6 +126,7 @@ def generate_estimation_report(result: EstimationResult) -> str:
             reasons = "; ".join(fr.failure_reasons) if fr.failure_reasons else ""
             title_attr = f' title="{_esc(reasons)}"' if reasons else ""
             force_cls = ' class="fail"' if fr.f_total > criteria.max_door_force else ''
+            q_open_str = f"{cms_to_cfm(fr.q_flow_open):.0f}" if fr.q_flow_open > 0 else "&mdash;"
             rows += f"""<tr>
                 <td class="level-cell">{_esc(fr.floor_label)}</td>
                 <td>{fr.height:.1f}</td>
@@ -133,7 +134,7 @@ def generate_estimation_report(result: EstimationResult) -> str:
                 <td>{fr.dp_wind:.2f}<br><span class="imperial">{pa_to_inwg(fr.dp_wind):.4f}</span></td>
                 <td class="{cls}">{fr.dp_net:.2f}<br><span class="imperial">{pa_to_inwg(fr.dp_net):.4f}</span></td>
                 <td>{cms_to_cfm(fr.q_leak_closed):.0f}</td>
-                <td>{cms_to_cfm(fr.q_flow_open):.0f if fr.q_flow_open > 0 else '&mdash;'}</td>
+                <td>{q_open_str}</td>
                 <td{force_cls}>{fr.f_total:.1f}<br><span class="imperial">{n_to_lbf(fr.f_total):.1f}</span></td>
                 <td class="{cls}"{title_attr}>{fr.status}</td>
             </tr>"""
