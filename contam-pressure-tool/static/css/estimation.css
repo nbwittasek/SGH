@@ -298,20 +298,19 @@
 }
 
 .meth-formula {
-    font-family: "Cambria Math", "Times New Roman", "Georgia", serif;
-    font-size: 13pt;
     color: #1a2332;
-    padding: 4px 0 2px;
-    letter-spacing: 0.3px;
+    padding: 2px 0;
     line-height: 1.4;
 }
 
-.meth-formula sub {
-    font-size: 0.7em;
+/* KaTeX display equations inside methodology cards: reduce vertical margin */
+.meth-formula .katex-display {
+    margin: 4px 0 2px;
 }
 
-.meth-formula sup {
-    font-size: 0.7em;
+/* Slightly scale up KaTeX for better readability in the app */
+.meth-formula .katex {
+    font-size: 1.15em;
 }
 
 .meth-where {

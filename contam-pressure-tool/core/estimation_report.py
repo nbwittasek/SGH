@@ -233,8 +233,8 @@ def generate_estimation_report(result: EstimationResult) -> str:
 
     n_traces = len(result.calculation_traces)
 
-    # --- Equation Methodology Reference (all 26 equations) ---
-    methodology_html = """
+    # --- Equation Methodology Reference (all 26 equations, KaTeX-rendered) ---
+    methodology_html = r"""
     <div class="section">
         <h2>Calculation Methodology &mdash; ASHRAE HSCE Equations (EQ-01 through EQ-26)</h2>
         <p class="meth-intro">
@@ -249,8 +249,8 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-01</span>
                 <span class="meth-name">Air density (ideal gas)</span>
-                <div class="meth-formula">&rho; = P<sub>atm</sub> / ( R<sub>air</sub> &middot; T )</div>
-                <div class="meth-where">where R<sub>air</sub> = 287.058 J/(kg&middot;K), T in Kelvin</div>
+                <div class="meth-formula">$$\rho = \frac{P_{\mathrm{atm}}}{R_{\mathrm{air}} \cdot T}$$</div>
+                <div class="meth-where">where \(R_{\mathrm{air}} = 287.058\;\text{J/(kg·K)}\), \(T\) in Kelvin</div>
             </div>
         </div>
 
@@ -259,18 +259,18 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-02</span>
                 <span class="meth-name">Door crack leakage area</span>
-                <div class="meth-formula">A<sub>Ld</sub> = g<sub>d</sub> &middot; ( 2w<sub>d</sub> + 2h<sub>d</sub> &minus; w<sub>threshold</sub> )</div>
-                <div class="meth-where">where g<sub>d</sub> = door gap width (m)</div>
+                <div class="meth-formula">$$A_{Ld} = g_d \cdot \bigl(2\,w_d + 2\,h_d - w_{\mathrm{threshold}}\bigr)$$</div>
+                <div class="meth-where">where \(g_d\) = door gap width (m)</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-05</span>
                 <span class="meth-name">Parallel leakage areas</span>
-                <div class="meth-formula">A<sub>eff</sub> = A<sub>1</sub> + A<sub>2</sub> + &hellip; + A<sub>n</sub></div>
+                <div class="meth-formula">$$A_{\mathrm{eff}} = A_1 + A_2 + \cdots + A_n$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-06</span>
                 <span class="meth-name">Series leakage areas</span>
-                <div class="meth-formula">1 / A<sub>eff</sub>&sup2; = 1 / A<sub>1</sub>&sup2; + 1 / A<sub>2</sub>&sup2; + &hellip; + 1 / A<sub>n</sub>&sup2;</div>
+                <div class="meth-formula">$$\frac{1}{A_{\mathrm{eff}}^{\,2}} = \frac{1}{A_1^{\,2}} + \frac{1}{A_2^{\,2}} + \cdots + \frac{1}{A_n^{\,2}}$$</div>
             </div>
         </div>
 
@@ -279,12 +279,12 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-03</span>
                 <span class="meth-name">Volumetric orifice flow</span>
-                <div class="meth-formula">Q = C<sub>d</sub> &middot; A &middot; &radic;( 2 &middot; |&Delta;P| / &rho; )</div>
+                <div class="meth-formula">$$Q = C_d \cdot A \sqrt{\frac{2\,|\Delta P|}{\rho}}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-04</span>
                 <span class="meth-name">Mass flow through orifice</span>
-                <div class="meth-formula">ṁ = C<sub>d</sub> &middot; A &middot; &radic;( 2 &middot; &rho; &middot; |&Delta;P| )</div>
+                <div class="meth-formula">$$\dot{m} = C_d \cdot A \sqrt{2\,\rho\,|\Delta P|}$$</div>
             </div>
         </div>
 
@@ -293,25 +293,25 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-07</span>
                 <span class="meth-name">Stack-effect pressure</span>
-                <div class="meth-formula">&Delta;P<sub>s</sub>(h) = 3460 &middot; ( 1/T<sub>o</sub> &minus; 1/T<sub>s</sub> ) &middot; ( h &minus; h<sub>NPP</sub> )</div>
+                <div class="meth-formula">$$\Delta P_s(h) = 3460 \left(\frac{1}{T_o} - \frac{1}{T_s}\right)\left(h - h_{\mathrm{NPP}}\right)$$</div>
                 <div class="meth-where">Positive = stairwell at higher pressure than adjacent floor</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-08</span>
                 <span class="meth-name">Neutral Pressure Plane (NPP)</span>
-                <div class="meth-formula">&Sigma; ṁ<sub>in</sub> = &Sigma; ṁ<sub>out</sub> &nbsp;&nbsp;(solved iteratively by bisection)</div>
-                <div class="meth-where">h<sub>NPP</sub> is the height where net mass flow through the envelope equals zero</div>
+                <div class="meth-formula">$$\sum \dot{m}_{\mathrm{in}} = \sum \dot{m}_{\mathrm{out}} \quad\text{(solved iteratively by bisection)}$$</div>
+                <div class="meth-where">\(h_{\mathrm{NPP}}\) is the height where net mass flow through the envelope equals zero</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-09</span>
                 <span class="meth-name">Wind-induced pressure</span>
-                <div class="meth-formula">&Delta;P<sub>w</sub> = 0.5 &middot; C<sub>p</sub> &middot; &rho;<sub>o</sub> &middot; V<sub>w</sub>&sup2;</div>
-                <div class="meth-where">C<sub>p</sub> from wind direction vs. face normal (windward +0.8, leeward &minus;0.3, side &minus;0.7)</div>
+                <div class="meth-formula">$$\Delta P_w = \tfrac{1}{2}\,C_p\,\rho_o\,V_w^{\,2}$$</div>
+                <div class="meth-where">\(C_p\): windward = +0.70, leeward = &minus;0.45, side = &minus;0.60</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-15</span>
                 <span class="meth-name">Net floor pressure differential</span>
-                <div class="meth-formula">&Delta;P<sub>net</sub> = &Delta;P<sub>mech</sub> + &Delta;P<sub>stack</sub> + &Delta;P<sub>wind</sub> &minus; &Delta;P<sub>exhaust</sub></div>
+                <div class="meth-formula">$$\Delta P_{\mathrm{net}} = \Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{stack}} + \Delta P_{\mathrm{wind}} - \Delta P_{\mathrm{exhaust}}$$</div>
             </div>
         </div>
 
@@ -320,18 +320,18 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-10a</span>
                 <span class="meth-name">Pressure force on door</span>
-                <div class="meth-formula">F<sub>p</sub> = &Delta;P &middot; w<sub>d</sub> &middot; h<sub>d</sub> / 2</div>
+                <div class="meth-formula">$$F_p = \frac{\Delta P \cdot w_d \cdot h_d}{2}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-10b</span>
                 <span class="meth-name">Total door-opening force</span>
-                <div class="meth-formula">F<sub>total</sub> = F<sub>closer</sub> + F<sub>p</sub> &middot; w<sub>d</sub> / ( w<sub>d</sub> &minus; d )</div>
-                <div class="meth-where">where d = handle-to-latch distance; must not exceed code max (133.4 N / 30 lbf)</div>
+                <div class="meth-formula">$$F_{\mathrm{total}} = F_{\mathrm{closer}} + \frac{\Delta P \cdot w_d \cdot h_d}{2} \cdot \frac{w_d}{w_d - d}$$</div>
+                <div class="meth-where">where \(d\) = handle-to-latch distance; must not exceed code max (133.4 N / 30 lbf)</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-10b&prime;</span>
-                <span class="meth-name">Max allowable &Delta;P from door force (rearranged)</span>
-                <div class="meth-formula">&Delta;P<sub>max</sub> = 2 &middot; ( F<sub>max</sub> &minus; F<sub>closer</sub> ) &middot; ( w<sub>d</sub> &minus; d ) / ( w<sub>d</sub>&sup2; &middot; h<sub>d</sub> )</div>
+                <span class="meth-name">Max allowable pressure from door force (rearranged)</span>
+                <div class="meth-formula">$$\Delta P_{\max} = \frac{2\,(F_{\max} - F_{\mathrm{closer}})\,(w_d - d)}{w_d^{\,2} \cdot h_d}$$</div>
             </div>
         </div>
 
@@ -340,13 +340,13 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-11</span>
                 <span class="meth-name">Average doorway velocity</span>
-                <div class="meth-formula">V<sub>door</sub> = Q<sub>door</sub> / ( w<sub>d</sub> &middot; h<sub>d</sub> )</div>
+                <div class="meth-formula">$$V_{\mathrm{door}} = \frac{Q_{\mathrm{door}}}{w_d \cdot h_d}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-12</span>
                 <span class="meth-name">Required open-door flow</span>
-                <div class="meth-formula">Q<sub>open</sub> = V<sub>min</sub> &middot; w<sub>d</sub> &middot; h<sub>d</sub></div>
-                <div class="meth-where">V<sub>min</sub> = 1.0 m/s (sprinklered) or 1.7 m/s (non-sprinklered)</div>
+                <div class="meth-formula">$$Q_{\mathrm{open}} = V_{\min} \cdot w_d \cdot h_d$$</div>
+                <div class="meth-where">\(V_{\min}\) = 1.0 m/s (sprinklered) or 1.7 m/s (non-sprinklered)</div>
             </div>
         </div>
 
@@ -355,17 +355,17 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-13</span>
                 <span class="meth-name">Total supply &mdash; all doors closed</span>
-                <div class="meth-formula">Q<sub>supply,closed</sub> = &Sigma; Q<sub>leak,doors</sub> + &Sigma; Q<sub>leak,walls</sub></div>
+                <div class="meth-formula">$$Q_{\mathrm{supply,closed}} = \sum Q_{\mathrm{leak,doors}} + \sum Q_{\mathrm{leak,walls}}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-14</span>
                 <span class="meth-name">Total supply &mdash; design doors open</span>
-                <div class="meth-formula">Q<sub>supply,open</sub> = &Sigma; Q<sub>closed floors</sub> + n<sub>open</sub> &middot; Q<sub>open</sub> + &Sigma; Q<sub>walls</sub></div>
+                <div class="meth-formula">$$Q_{\mathrm{supply,open}} = \sum Q_{\mathrm{closed\;floors}} + n_{\mathrm{open}} \cdot Q_{\mathrm{open}} + \sum Q_{\mathrm{walls}}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">DESIGN</span>
                 <span class="meth-name">Governing supply air rate</span>
-                <div class="meth-formula">Q<sub>design</sub> = max( Q<sub>supply,closed</sub> , Q<sub>supply,open</sub> )</div>
+                <div class="meth-formula">$$\boxed{Q_{\mathrm{design}} = \max\!\left(Q_{\mathrm{supply,closed}},\; Q_{\mathrm{supply,open}}\right)}$$</div>
             </div>
         </div>
 
@@ -374,23 +374,23 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-19</span>
                 <span class="meth-name">Stairwell leakage into fire floor</span>
-                <div class="meth-formula">Q = C<sub>d</sub> &middot; A<sub>Ld</sub> &middot; n<sub>d</sub> &middot; &radic;( 2 &middot; (&Delta;P<sub>mech</sub> + &Delta;P<sub>exhaust</sub>) / &rho;<sub>s</sub> )</div>
+                <div class="meth-formula">$$Q_{\mathrm{stair}} = C_d \cdot A_{Ld} \cdot n_d \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{exhaust}})}{\rho_s}}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-20</span>
                 <span class="meth-name">Elevator shaft leakage into fire floor</span>
-                <div class="meth-formula">Q = C<sub>d</sub> &middot; A<sub>Le</sub> &middot; n<sub>elev</sub> &middot; &radic;( 2 &middot; &Delta;P<sub>elev</sub> / &rho;<sub>i</sub> )</div>
+                <div class="meth-formula">$$Q_{\mathrm{elev}} = C_d \cdot A_{Le} \cdot n_{\mathrm{elev}} \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{elev}}}{\rho_i}}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-21</span>
                 <span class="meth-name">Exterior wall leakage into fire floor</span>
-                <div class="meth-formula">Q = C<sub>d</sub> &middot; ( A<sub>Lw</sub> &middot; P<sub>face</sub> &middot; h<sub>f</sub> ) &middot; &radic;( 2 &middot; (&Delta;P<sub>exh</sub> + &Delta;P<sub>wind</sub>) / &rho;<sub>o</sub> )</div>
+                <div class="meth-formula">$$Q_{\mathrm{ext}} = C_d \cdot (A_{Lw} \cdot P_{\mathrm{face}} \cdot h_f) \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{exh}} + \Delta P_{\mathrm{wind}})}{\rho_o}}$$</div>
                 <div class="meth-where">Summed over all building faces</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-22</span>
                 <span class="meth-name">Vertical leakage (floor above + below)</span>
-                <div class="meth-formula">Q = 2 &middot; C<sub>d</sub> &middot; ( A<sub>Lf</sub> &middot; A<sub>floor</sub> ) &middot; &radic;( 2 &middot; &Delta;P<sub>exhaust</sub> / &rho;<sub>i</sub> )</div>
+                <div class="meth-formula">$$Q_{\mathrm{vert}} = 2\,C_d \cdot (A_{Lf} \cdot A_{\mathrm{floor}}) \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{exhaust}}}{\rho_i}}$$</div>
             </div>
         </div>
 
@@ -399,13 +399,13 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-24</span>
                 <span class="meth-name">Fire plume air entrainment</span>
-                <div class="meth-formula">Q<sub>fire</sub> = Ḣ / ( &rho;<sub>i</sub> &middot; c<sub>p</sub> &middot; (T<sub>f</sub> &minus; T<sub>i</sub>) )</div>
-                <div class="meth-where">Ḣ = design fire HRR (W); c<sub>p</sub> = 1005 J/(kg&middot;K)</div>
+                <div class="meth-formula">$$Q_{\mathrm{fire}} = \frac{\dot{H}}{\rho_i \cdot c_p \cdot (T_f - T_i)}$$</div>
+                <div class="meth-where">\(\dot{H}\) = design fire HRR (W); \(c_p = 1005\;\text{J/(kg·K)}\)</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-23</span>
                 <span class="meth-name">Thermal expansion volume</span>
-                <div class="meth-formula">Q<sub>expansion</sub> = Q<sub>fire</sub> &middot; ( T<sub>f</sub> / T<sub>i</sub> &minus; 1 )</div>
+                <div class="meth-formula">$$Q_{\mathrm{expansion}} = Q_{\mathrm{fire}} \cdot \left(\frac{T_f}{T_i} - 1\right)$$</div>
             </div>
         </div>
 
@@ -414,13 +414,13 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq">
                 <span class="meth-id">EQ-25</span>
                 <span class="meth-name">Total fire floor exhaust (at fire temperature)</span>
-                <div class="meth-formula">Q<sub>exhaust</sub> = Q<sub>stairs</sub> + Q<sub>elev</sub> + Q<sub>ext</sub> + Q<sub>vert</sub> + Q<sub>expansion</sub></div>
+                <div class="meth-formula">$$\boxed{Q_{\mathrm{exhaust}} = Q_{\mathrm{stair}} + Q_{\mathrm{elev}} + Q_{\mathrm{ext}} + Q_{\mathrm{vert}} + Q_{\mathrm{expansion}}}$$</div>
             </div>
             <div class="meth-eq">
                 <span class="meth-id">EQ-26</span>
                 <span class="meth-name">Exhaust at standard conditions (20&deg;C)</span>
-                <div class="meth-formula">Q<sub>std</sub> = Q<sub>exhaust</sub> &middot; ( T<sub>f</sub> / T<sub>std</sub> )</div>
-                <div class="meth-where">T<sub>std</sub> = 293.15 K (20&deg;C)</div>
+                <div class="meth-formula">$$Q_{\mathrm{std}} = Q_{\mathrm{exhaust}} \cdot \frac{T_f}{T_{\mathrm{std}}}$$</div>
+                <div class="meth-where">\(T_{\mathrm{std}} = 293.15\;\text{K}\) (20&deg;C)</div>
             </div>
         </div>
     </div>
@@ -434,6 +434,16 @@ def generate_estimation_report(result: EstimationResult) -> str:
 <head>
     <meta charset="UTF-8">
     <title>Stair Pressurization Estimation Report</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+          integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+"
+          crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+            integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ber/kqKIFmsm1A7E"
+            crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+            integrity="sha384-43gviWU0YVjaDtb/GhzOouOXtZMP/7XUzwPTstBeZFe/+rCMvRjwKoYnB1vl0sa4"
+            crossorigin="anonymous"
+            onload="renderMathInElement(document.body,{{delimiters:[{{left:'$$',right:'$$',display:true}},{{left:'\\\\(',right:'\\\\)',display:false}}],throwOnError:false}});"></script>
     <style>
         @page {{ size: landscape; margin: 0.5in; }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -504,25 +514,27 @@ def generate_estimation_report(result: EstimationResult) -> str:
         .meth-eq {{
             background: #f8f9fa; border: 1px solid #e8ecf0; border-radius: 4px;
             padding: 6px 12px; margin: 0 0 5px 16px;
-            display: grid; grid-template-columns: 60px 1fr; grid-template-rows: auto auto auto;
-            column-gap: 8px; align-items: baseline;
+            display: flex; align-items: flex-start; gap: 10px;
         }}
         .meth-id {{
+            flex-shrink: 0;
             font-family: "Consolas", "Courier New", monospace;
             font-weight: 700; color: #2e86de; font-size: 8pt;
-            grid-row: 1 / span 3; align-self: center; text-align: center;
-            background: #e8f0fe; border-radius: 3px; padding: 2px 4px;
+            text-align: center; min-width: 52px;
+            background: #e8f0fe; border-radius: 3px; padding: 3px 6px;
+            margin-top: 2px;
         }}
         .meth-name {{
-            font-size: 8pt; color: #555; font-style: italic; grid-column: 2;
+            font-size: 8pt; color: #555; font-style: italic;
         }}
         .meth-formula {{
-            font-family: "Cambria Math", "Times New Roman", serif;
-            font-size: 11pt; color: #1a2332; padding: 4px 0 2px; grid-column: 2;
-            letter-spacing: 0.3px;
+            padding: 2px 0; color: #1a2332;
+        }}
+        .meth-formula .katex-display {{
+            margin: 4px 0 2px;
         }}
         .meth-where {{
-            font-size: 7.5pt; color: #7f8c9b; grid-column: 2;
+            font-size: 7.5pt; color: #7f8c9b;
         }}
         .print-btn {{
             position: fixed; top: 10px; right: 10px; background: #2e86de; color: #fff;
