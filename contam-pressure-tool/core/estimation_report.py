@@ -8,6 +8,9 @@ import datetime
 import html as html_module
 from typing import List
 
+from collections import OrderedDict
+from typing import Dict
+
 from .estimation_engine import cms_to_cfm, n_to_lbf, pa_to_inwg
 from .estimation_models import (
     CalculationTrace,
@@ -17,6 +20,229 @@ from .estimation_models import (
     SensitivityCase,
     StairResult,
 )
+
+# ---------------------------------------------------------------------------
+# KaTeX display-math formulas keyed by equation ID
+# ---------------------------------------------------------------------------
+_KATEX_FORMULAS: Dict[str, str] = {
+    "EQ-01": r"\rho = \frac{P_{\mathrm{atm}}}{R_{\mathrm{air}} \cdot T}",
+    "EQ-02": r"A_{Ld} = g_d \cdot \bigl(2\,w_d + 2\,h_d - w_{\mathrm{threshold}}\bigr)",
+    "EQ-03": r"Q = C_d \cdot A \sqrt{\frac{2\,|\Delta P|}{\rho}}",
+    "EQ-04": r"\dot{m} = C_d \cdot A \sqrt{2\,\rho\,|\Delta P|}",
+    "EQ-05": r"A_{\mathrm{eff}} = A_1 + A_2 + \cdots + A_n",
+    "EQ-06": r"\frac{1}{A_{\mathrm{eff}}^2} = \frac{1}{A_1^2} + \frac{1}{A_2^2} + \cdots + \frac{1}{A_n^2}",
+    "EQ-07": r"\Delta P_s(h) = 3460 \left(\frac{1}{T_o} - \frac{1}{T_s}\right)(h - h_{\mathrm{NPP}})",
+    "EQ-09": r"\Delta P_w = \tfrac{1}{2}\,C_p\,\rho_o\,V_w^{\,2}",
+    "EQ-10b": r"F_{\mathrm{total}} = F_{\mathrm{closer}} + \frac{\Delta P \cdot w_d \cdot h_d}{2} \cdot \frac{w_d}{w_d - d}",
+    "EQ-12": r"Q_{\mathrm{open}} = V_{\min} \cdot w_d \cdot h_d",
+    "EQ-13": r"Q_{\mathrm{supply,closed}} = \sum Q_{\mathrm{leak,doors}} + \sum Q_{\mathrm{leak,walls}}",
+    "EQ-14": r"Q_{\mathrm{supply,open}} = \sum Q_{\mathrm{closed\;floors}} + n_{\mathrm{open}} \cdot Q_{\mathrm{open}} + \sum Q_{\mathrm{leak,walls}}",
+    "EQ-15": r"\Delta P_{\mathrm{net}} = \Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{stack}} + \Delta P_{\mathrm{wind}} - \Delta P_{\mathrm{exhaust}}",
+    "EQ-19": r"Q_{\mathrm{stair}} = C_d \cdot A_{Ld} \cdot n_d \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{exhaust}})}{\rho_s}}",
+    "EQ-20": r"Q_{\mathrm{elev}} = C_d \cdot A_{Le} \cdot n_{\mathrm{elev}} \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{elev}}}{\rho_i}}",
+    "EQ-21": r"Q_{\mathrm{ext}} = \sum_{\text{faces}} C_d \cdot (A_{Lw} \cdot P_{\text{face}} \cdot h_f) \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{exh}} + \Delta P_{\mathrm{wind}})}{\rho_o}}",
+    "EQ-22": r"Q_{\mathrm{vert}} = 2\,C_d \cdot (A_{Lf} \cdot A_{\mathrm{floor}}) \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{exhaust}}}{\rho_i}}",
+    "EQ-23": r"Q_{\mathrm{expansion}} = Q_{\mathrm{fire}} \cdot \left(\frac{T_f}{T_i} - 1\right)",
+    "EQ-24": r"Q_{\mathrm{fire}} = \frac{\dot{H}}{\rho_i \cdot c_p \cdot (T_f - T_i)}",
+    "EQ-25": r"Q_{\mathrm{exhaust}} = Q_{\mathrm{stair}} + Q_{\mathrm{elev}} + Q_{\mathrm{ext}} + Q_{\mathrm{vert}} + Q_{\mathrm{expansion}}",
+    "EQ-26": r"Q_{\mathrm{std}} = Q_{\mathrm{exhaust}} \cdot \frac{T_f}{T_{\mathrm{std}}}",
+    "DESIGN": r"Q_{\mathrm{design}} = \max\!\left(Q_{\mathrm{supply,closed}},\; Q_{\mathrm{supply,open}}\right)",
+    "SETUP": r"\Delta P_{\mathrm{mech}} = \max(\Delta P_{\min,\mathrm{closed}},\; \Delta P_{\mathrm{exhaust}})",
+}
+
+# ---------------------------------------------------------------------------
+# Ordered section definitions for grouping traces
+# ---------------------------------------------------------------------------
+_TRACE_SECTIONS = [
+    {
+        "id": "air-properties",
+        "title": "1. Air Properties",
+        "eq_ids": ["EQ-01"],
+        "prose": (
+            "Air density at each relevant temperature is computed from the ideal gas law. "
+            "Four densities are needed: outdoor (&rho;<sub>o</sub>), indoor (&rho;<sub>i</sub>), "
+            "stairwell (&rho;<sub>s</sub>), and fire floor (&rho;<sub>f</sub>)."
+        ),
+    },
+    {
+        "id": "setup",
+        "title": "2. Design Pressure Targets",
+        "eq_ids": ["SETUP"],
+        "prose": (
+            "The mechanical &Delta;P target is the larger of the minimum closed-door "
+            "differential and the fire-floor exhaust depressurization requirement."
+        ),
+    },
+    {
+        "id": "wind",
+        "title": "3. Wind Pressures",
+        "eq_ids": ["EQ-09"],
+        "prose": (
+            "Wind pressure on each building face is computed using the pressure-coefficient "
+            "method. Windward C<sub>p</sub>&nbsp;=&nbsp;+0.70, leeward&nbsp;=&nbsp;&minus;0.45, "
+            "side&nbsp;=&nbsp;&minus;0.60."
+        ),
+    },
+    {
+        "id": "leakage",
+        "title": "4. Leakage Area Characterization",
+        "eq_ids": ["EQ-02"],
+        "prose": (
+            "Stairwell door leakage area is computed from the door crack geometry. "
+            "Other component leakage areas are from ASHRAE HSCE tabulated values."
+        ),
+    },
+    {
+        "id": "open-door",
+        "title": "5. Open-Door Flow Requirement",
+        "eq_ids": ["EQ-12"],
+        "prose": (
+            "The minimum airflow through each open door is set by the code-required "
+            "velocity to prevent smoke migration through the doorway."
+        ),
+    },
+    {
+        "id": "floor-calcs",
+        "title": "6. Floor-by-Floor Pressure &amp; Flow Analysis",
+        "eq_ids": ["EQ-07", "EQ-15", "EQ-03", "EQ-10b"],
+        "prose": (
+            "For each floor served by each stairwell, the stack-effect pressure, "
+            "net pressure differential, orifice leakage flow, and door-opening "
+            "force are evaluated. Only selected representative floors are shown; "
+            "all floors are computed."
+        ),
+    },
+    {
+        "id": "stair-supply",
+        "title": "7. Stairwell Supply Air Determination",
+        "eq_ids": ["EQ-13", "EQ-14", "DESIGN"],
+        "prose": (
+            "The supply air rate is computed for the all-doors-closed and doors-open "
+            "scenarios. The design value is the larger of the two."
+        ),
+    },
+    {
+        "id": "exhaust",
+        "title": "8. Fire Floor Exhaust (Depressurization)",
+        "eq_ids": ["EQ-19", "EQ-20", "EQ-21", "EQ-22", "EQ-24", "EQ-23", "EQ-25", "EQ-26"],
+        "prose": (
+            "All airflow sources entering the fire floor &mdash; stairwell leakage, "
+            "elevator shaft leakage, exterior wall leakage, vertical leakage from "
+            "adjacent floors, and thermal expansion &mdash; are summed to determine "
+            "the required exhaust rate."
+        ),
+    },
+]
+
+_HIGHLIGHT_EQ_IDS = {"DESIGN", "EQ-25"}
+
+
+# ---------------------------------------------------------------------------
+# Trace rendering helpers
+# ---------------------------------------------------------------------------
+def _render_trace_instance(tr: CalculationTrace) -> str:
+    """Render one worked instance (inputs table + substitution + result)."""
+    input_rows = "".join(
+        f'<tr><td class="calc-var">{_esc(k)}</td>'
+        f'<td class="calc-val">{_esc(v)}</td></tr>'
+        for k, v in tr.inputs.items()
+    )
+    return (
+        '<div class="calc-instance">'
+        f'<div class="calc-instance-header">{_esc(tr.description)}</div>'
+        f'<table class="calc-inputs-table">{input_rows}</table>'
+        '<div class="calc-substitution">'
+        '<span class="calc-sub-label">Substitution: </span>'
+        f'<span class="calc-sub-expr">{_esc(tr.substitution)}</span>'
+        '</div>'
+        '<div class="calc-result-box">'
+        '<span class="calc-result-arrow">&rArr;</span>'
+        f'<span class="calc-result-value">{_esc(tr.result)}</span>'
+        '</div>'
+        '</div>'
+    )
+
+
+def _build_ashrae_trace(traces: List[CalculationTrace]) -> str:
+    """Build the full ASHRAE-style Section B trace HTML."""
+    # Index traces by equation_id, preserving order
+    grouped: OrderedDict[str, list] = OrderedDict()
+    for tr in traces:
+        grouped.setdefault(tr.equation_id, []).append(tr)
+
+    # Track which eq_ids are covered by sections
+    covered_eq_ids: set = set()
+    parts: list = []
+
+    for sec in _TRACE_SECTIONS:
+        # Collect traces belonging to this section
+        section_traces: list = []
+        for eq_id in sec["eq_ids"]:
+            if eq_id in grouped:
+                section_traces.extend(grouped[eq_id])
+            covered_eq_ids.add(eq_id)
+
+        if not section_traces:
+            continue
+
+        # Section wrapper
+        parts.append(f'<div class="calc-section" id="trace-{sec["id"]}">')
+        parts.append(f'<div class="calc-section-title">{sec["title"]}</div>')
+        parts.append(f'<div class="calc-section-prose">{sec["prose"]}</div>')
+
+        # Track which eq_ids we've already emitted a reference block for
+        emitted_refs: set = set()
+
+        for tr in section_traces:
+            eq_id = tr.equation_id
+            # Emit reference equation block on first occurrence
+            if eq_id not in emitted_refs:
+                emitted_refs.add(eq_id)
+                katex_formula = _KATEX_FORMULAS.get(eq_id, "")
+                highlight = " calc-eq-highlight" if eq_id in _HIGHLIGHT_EQ_IDS else ""
+                if katex_formula:
+                    parts.append(
+                        f'<div class="calc-eq-reference{highlight}">'
+                        f'<span class="calc-eq-tag">{_esc(eq_id)}</span>'
+                        f'<div class="calc-eq-katex">$${katex_formula}$$</div>'
+                        '</div>'
+                    )
+
+            # Worked instance
+            parts.append(_render_trace_instance(tr))
+
+        parts.append('</div>')  # close calc-section
+
+    # Catch-all for any traces not in a defined section
+    uncovered_traces = [
+        tr for tr in traces if tr.equation_id not in covered_eq_ids
+    ]
+    if uncovered_traces:
+        parts.append('<div class="calc-section" id="trace-additional">')
+        parts.append('<div class="calc-section-title">Additional Calculations</div>')
+        parts.append(
+            '<div class="calc-section-prose">'
+            'Supplementary calculation steps not covered by the main sections above.'
+            '</div>'
+        )
+        emitted_refs_extra: set = set()
+        for tr in uncovered_traces:
+            eq_id = tr.equation_id
+            if eq_id not in emitted_refs_extra:
+                emitted_refs_extra.add(eq_id)
+                katex_formula = _KATEX_FORMULAS.get(eq_id, "")
+                highlight = " calc-eq-highlight" if eq_id in _HIGHLIGHT_EQ_IDS else ""
+                if katex_formula:
+                    parts.append(
+                        f'<div class="calc-eq-reference{highlight}">'
+                        f'<span class="calc-eq-tag">{_esc(eq_id)}</span>'
+                        f'<div class="calc-eq-katex">$${katex_formula}$$</div>'
+                        '</div>'
+                    )
+            parts.append(_render_trace_instance(tr))
+        parts.append('</div>')
+
+    return "\n".join(parts)
 
 
 def _esc(text) -> str:
@@ -208,18 +434,8 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <td class="{violated_cls}">{"YES" if sc.constraints_violated else "No"}</td>
         </tr>"""
 
-    # --- Section B: Full Calculation Trace (ALL equations in succession) ---
-    trace_html = ""
-    for i, tr in enumerate(result.calculation_traces):
-        inputs_str = ", ".join(f"{k} = {v}" for k, v in tr.inputs.items())
-        trace_html += f"""
-        <div class="trace-block">
-            <div class="trace-eq">{i+1}. {_esc(tr.equation_id)}: {_esc(tr.description)}</div>
-            <div class="trace-formula">Formula: {_esc(tr.formula)}</div>
-            <div class="trace-inputs">Inputs: {_esc(inputs_str)}</div>
-            <div class="trace-sub">Substitution: {_esc(tr.substitution)}</div>
-            <div class="trace-result">Result: <strong>{_esc(tr.result)}</strong></div>
-        </div>"""
+    # --- Section B: Full Calculation Trace (ASHRAE HSCE style) ---
+    trace_html = _build_ashrae_trace(result.calculation_traces)
 
     # Warnings
     warnings_html = ""
@@ -529,6 +745,82 @@ def generate_estimation_report(result: EstimationResult) -> str:
         .trace-inputs {{ color: #666; }}
         .trace-sub {{ color: #444; }}
         .trace-result {{ color: #1a2332; }}
+        /* ASHRAE-Style Calculation Trace */
+        .calc-section {{
+            margin-bottom: 22px; page-break-inside: avoid;
+        }}
+        .calc-section-title {{
+            font-size: 10pt; font-weight: 700; color: #1a2332;
+            border-bottom: 2px solid #2e86de; padding-bottom: 3px;
+            margin-bottom: 6px;
+        }}
+        .calc-section-prose {{
+            font-size: 8.5pt; color: #444; line-height: 1.6; margin: 4px 0 10px;
+            text-align: justify;
+        }}
+        .calc-eq-reference {{
+            background: #f6f8fb; border: 1px solid #dde2e8; border-radius: 5px;
+            padding: 8px 14px; margin: 10px 0 6px; position: relative;
+        }}
+        .calc-eq-reference .calc-eq-katex {{
+            text-align: center; padding: 4px 0;
+        }}
+        .calc-eq-reference .calc-eq-katex .katex-display {{
+            margin: 4px 0;
+        }}
+        .calc-eq-highlight {{
+            background: #eef6ff; border-color: #a0c4e8; border-width: 2px;
+        }}
+        .calc-eq-tag {{
+            position: absolute; top: -9px; left: 12px;
+            font-family: "Consolas", "Courier New", monospace;
+            font-weight: 700; font-size: 7.5pt; color: #2e86de;
+            background: #e8f0fe; border-radius: 3px; padding: 1px 7px;
+            border: 1px solid #b6d4f0;
+        }}
+        .calc-instance {{
+            margin: 4px 0 8px 12px; padding: 6px 10px;
+            border-left: 3px solid #d0d8e4; background: #fdfdfe;
+            font-size: 8pt; page-break-inside: avoid;
+        }}
+        .calc-instance-header {{
+            font-weight: 600; color: #2e3a4e; font-size: 8.5pt; margin-bottom: 4px;
+        }}
+        .calc-inputs-table {{
+            width: auto !important; margin: 3px 0 5px 6px; border-collapse: collapse;
+        }}
+        .calc-inputs-table td {{
+            padding: 1px 10px 1px 0; border: none; text-align: left;
+            font-size: 7.5pt; line-height: 1.4;
+        }}
+        .calc-var {{
+            font-weight: 600; color: #7f8c9b; white-space: nowrap; min-width: 80px;
+        }}
+        .calc-val {{
+            color: #2c3e50; font-family: "Consolas", "Courier New", monospace;
+        }}
+        .calc-substitution {{
+            margin: 4px 0 4px 6px; font-size: 7.5pt; line-height: 1.5;
+        }}
+        .calc-sub-label {{
+            color: #7f8c9b; font-weight: 600;
+        }}
+        .calc-sub-expr {{
+            color: #444; font-family: "Consolas", "Courier New", monospace;
+            word-break: break-all;
+        }}
+        .calc-result-box {{
+            margin: 4px 0 2px 6px; padding: 3px 8px;
+            background: #e8f5e9; border-radius: 3px;
+            display: inline-block; font-size: 8pt;
+        }}
+        .calc-result-arrow {{
+            color: #27ae60; font-weight: 700; margin-right: 4px;
+        }}
+        .calc-result-value {{
+            color: #1a5e2a; font-weight: 700;
+            font-family: "Consolas", "Courier New", monospace;
+        }}
         .warn-list {{ padding-left: 20px; }}
         .warn-list li {{ color: #d68910; margin-bottom: 4px; }}
         /* Methodology section — narrative style */
@@ -632,8 +924,10 @@ def generate_estimation_report(result: EstimationResult) -> str:
     <div class="section">
         <h2>Section B &mdash; Calculation Trace ({n_traces} steps)</h2>
         <p style="font-size:8pt;color:#7f8c9b;margin-bottom:10px;">
-            All equations evaluated in sequence.  Each step shows the formula,
-            numeric substitution, and result so a plan checker can verify every value.
+            Equations are presented following the ASHRAE <em>Handbook of Smoke Control
+            Engineering</em> convention: each section states the general equation, then
+            shows one or more worked instances with numeric inputs, substitution, and
+            result. All intermediate values are shown for plan-checker verification.
         </p>
         {trace_html}
     </div>
