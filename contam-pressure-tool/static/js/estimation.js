@@ -302,6 +302,7 @@ const Est = (() => {
             document.getElementById('est-report-btns').style.display = '';
 
         } catch (e) {
+            console.error('[Est] runEstimation error:', e);
             showStatus('est-status', 'Error: ' + e.message, 'error');
         }
     }
@@ -484,8 +485,9 @@ const Est = (() => {
     }
 
     function renderMethodology(data) {
+        console.log('[Est] renderMethodology called');
         const div = document.getElementById('est-methodology-section');
-        if (!div) return;
+        if (!div) { console.warn('[Est] methodology section not found'); return; }
         div.style.display = 'block';
 
         const cr = lastCriteria;
@@ -956,7 +958,8 @@ const Est = (() => {
 
         const content = document.getElementById('est-methodology-content');
         content.innerHTML = html;
-        renderKaTeX(content);
+        content.style.display = '';  // reset in case previously collapsed
+        try { renderKaTeX(content); } catch (e) { console.warn('KaTeX render:', e); }
     }
 
     let methodologyCollapsed = false;
