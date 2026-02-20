@@ -222,6 +222,135 @@
     color: #7f8c9b;
 }
 
+/* Methodology Section */
+.meth-toggle {
+    float: right;
+    font-size: 8pt;
+    padding: 2px 10px;
+    margin-top: -2px;
+}
+
+.meth-intro {
+    font-size: 9.5pt;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 18px;
+    padding: 10px 14px;
+    background: #f0f7ff;
+    border-left: 3px solid #2e86de;
+    border-radius: 0 4px 4px 0;
+}
+
+.meth-group {
+    margin-bottom: 18px;
+}
+
+.meth-group-title {
+    font-size: 10pt !important;
+    color: #1a2332 !important;
+    border-bottom: none !important;
+    border-left: 3px solid #2e86de;
+    padding: 0 0 0 10px !important;
+    margin: 16px 0 8px !important;
+}
+
+.meth-eq {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: #f8f9fa;
+    border: 1px solid #e8ecf0;
+    border-radius: 5px;
+    padding: 8px 14px;
+    margin: 0 0 6px 18px;
+}
+
+.meth-eq-highlight {
+    background: #eef6ff;
+    border-color: #b0d4f1;
+    border-width: 2px;
+}
+
+.meth-id {
+    flex-shrink: 0;
+    font-family: "Consolas", "Courier New", monospace;
+    font-weight: 700;
+    font-size: 8pt;
+    color: #2e86de;
+    background: #e8f0fe;
+    border-radius: 3px;
+    padding: 3px 8px;
+    text-align: center;
+    min-width: 52px;
+    margin-top: 2px;
+}
+
+.meth-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.meth-name {
+    font-size: 8.5pt;
+    color: #666;
+    font-style: italic;
+    margin-bottom: 2px;
+}
+
+.meth-formula {
+    font-family: "Cambria Math", "Times New Roman", "Georgia", serif;
+    font-size: 13pt;
+    color: #1a2332;
+    padding: 4px 0 2px;
+    letter-spacing: 0.3px;
+    line-height: 1.4;
+}
+
+.meth-formula sub {
+    font-size: 0.7em;
+}
+
+.meth-formula sup {
+    font-size: 0.7em;
+}
+
+.meth-where {
+    font-size: 8pt;
+    color: #7f8c9b;
+    line-height: 1.4;
+}
+
+.meth-note {
+    background: #f8f9fa;
+    border: 1px solid #e8ecf0;
+    border-radius: 5px;
+    padding: 10px 14px;
+    margin-left: 18px;
+    font-size: 9pt;
+    color: #555;
+    line-height: 1.5;
+}
+
+.meth-criteria-table {
+    margin: 0 0 6px 18px;
+    width: calc(100% - 18px);
+}
+
+.meth-criteria-table td {
+    text-align: left;
+    font-size: 8.5pt;
+}
+
+.meth-leak-table {
+    margin: 8px 0 6px 18px;
+    width: calc(100% - 18px);
+}
+
+.meth-leak-table td:first-child {
+    text-align: left;
+    font-weight: 600;
+}
+
 /* Calculation Trace Blocks */
 .trace-block {
     background: #f8f9fa;

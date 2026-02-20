@@ -291,6 +291,7 @@ const Est = (() => {
                     data.warnings.map(w => `<p>${esc(w)}</p>`).join('') + '</div>';
             }
 
+            renderMethodology(data);
             renderSystemSummary(data);
             renderFloorTables(data);
             renderExhaust(data);
@@ -310,6 +311,8 @@ const Est = (() => {
     // -----------------------------------------------------------------------
     function hideResults() {
         document.getElementById('est-warnings').style.display = 'none';
+        const methDiv = document.getElementById('est-methodology-section');
+        if (methDiv) methDiv.style.display = 'none';
         document.getElementById('est-system-summary').style.display = 'none';
         document.getElementById('est-floor-tables').style.display = 'none';
         document.getElementById('est-exhaust-section').style.display = 'none';
@@ -461,6 +464,299 @@ const Est = (() => {
         html += '</tbody></table>';
 
         document.getElementById('est-sensitivity-content').innerHTML = html;
+    }
+
+    // -----------------------------------------------------------------------
+    // Calculation Methodology (formatted equations for plan checker)
+    // -----------------------------------------------------------------------
+    function renderMethodology(data) {
+        const div = document.getElementById('est-methodology-section');
+        if (!div) return;
+        div.style.display = 'block';
+
+        // Build the criteria table from actual input values
+        const cr = lastCriteria;
+        const minDpInwg = paToInwg(cr.min_dp_closed || 12.5).toFixed(2);
+        const maxDpInwg = paToInwg(cr.max_dp_closed || 87).toFixed(2);
+        const exhDpInwg = paToInwg(cr.floor_exhaust_dp || 25).toFixed(2);
+        const maxForceLbf = nToLbf(cr.max_door_force || 133).toFixed(0);
+
+        let html = `
+        <div class="meth-intro">
+            This section documents the step-by-step procedure used to determine the
+            <strong>minimum stair pressurization supply air</strong> and the <strong>minimum
+            fire-floor exhaust (depressurization)</strong> rates. All equations reference
+            ASHRAE <em>Handbook of Smoke Control Engineering</em> (HSCE).
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Design Criteria (Code-Driven Inputs)</h4>
+            <table class="est-table meth-criteria-table">
+                <thead><tr><th>Parameter</th><th>Symbol</th><th>Value</th><th>Source</th></tr></thead>
+                <tbody>
+                    <tr><td>Min stairwell-to-corridor pressure (all doors closed)</td>
+                        <td>&Delta;P<sub>min</sub></td>
+                        <td>${cr.min_dp_closed || 12.5} Pa (${minDpInwg} in.&nbsp;w.g.)</td>
+                        <td>IBC 909.20.5.1</td></tr>
+                    <tr><td>Max stairwell-to-corridor pressure (all doors closed)</td>
+                        <td>&Delta;P<sub>max</sub></td>
+                        <td>${cr.max_dp_closed || 87} Pa (${maxDpInwg} in.&nbsp;w.g.)</td>
+                        <td>NFPA 92 &sect;4.4.2.1</td></tr>
+                    <tr><td>Min door opening velocity (sprinklered)</td>
+                        <td>V<sub>min</sub></td>
+                        <td>${cr.min_door_velocity || 1.0} m/s</td>
+                        <td>IBC 909.20.5.2</td></tr>
+                    <tr><td>Max door-opening force</td>
+                        <td>F<sub>max</sub></td>
+                        <td>${cr.max_door_force || 133} N (${maxForceLbf} lbf)</td>
+                        <td>IBC 1010.1.3</td></tr>
+                    <tr><td>Fire-floor exhaust pressure differential</td>
+                        <td>&Delta;P<sub>exhaust</sub></td>
+                        <td>${cr.floor_exhaust_dp || 25} Pa (${exhDpInwg} in.&nbsp;w.g.)</td>
+                        <td>IBC 909.20.6</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 1 &mdash; Air Densities</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-01</span>
+                <div class="meth-body">
+                    <div class="meth-name">Air density (ideal gas law)</div>
+                    <div class="meth-formula">&rho; = P<sub>atm</sub> &frasl; ( R<sub>air</sub> &middot; T )</div>
+                    <div class="meth-where">R<sub>air</sub> = 287.058 J/(kg&middot;K); computed for outdoor, indoor, stairwell, and fire-floor temperatures</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 2 &mdash; Leakage Areas</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-02</span>
+                <div class="meth-body">
+                    <div class="meth-name">Door crack leakage area</div>
+                    <div class="meth-formula">A<sub>Ld</sub> = g<sub>d</sub> &middot; ( 2w<sub>d</sub> + 2h<sub>d</sub> &minus; w<sub>threshold</sub> )</div>
+                    <div class="meth-where">g<sub>d</sub> = door gap (m), w<sub>d</sub> = door width, h<sub>d</sub> = door height</div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-05</span>
+                <div class="meth-body">
+                    <div class="meth-name">Parallel leakage areas</div>
+                    <div class="meth-formula">A<sub>eff</sub> = A<sub>1</sub> + A<sub>2</sub> + &hellip; + A<sub>n</sub></div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-06</span>
+                <div class="meth-body">
+                    <div class="meth-name">Series leakage areas</div>
+                    <div class="meth-formula">1 &frasl; A<sub>eff</sub>&sup2; = 1 &frasl; A<sub>1</sub>&sup2; + 1 &frasl; A<sub>2</sub>&sup2; + &hellip; + 1 &frasl; A<sub>n</sub>&sup2;</div>
+                </div>
+            </div>
+            <table class="est-table meth-leak-table">
+                <thead><tr><th>Component</th><th>Tight</th><th>Average</th><th>Loose</th><th>Unit</th></tr></thead>
+                <tbody>
+                    <tr><td>Stair door</td><td>0.01</td><td>0.02</td><td>0.04</td><td>m&sup2; per door</td></tr>
+                    <tr><td>Elevator door</td><td>0.02</td><td>0.06</td><td>0.11</td><td>m&sup2; per door</td></tr>
+                    <tr><td>Exterior wall</td><td>0.5&times;10<sup>&minus;4</sup></td><td>1.7&times;10<sup>&minus;4</sup></td><td>5.0&times;10<sup>&minus;4</sup></td><td>m&sup2;/m&sup2; wall</td></tr>
+                    <tr><td>Floor/ceiling</td><td>0.2&times;10<sup>&minus;4</sup></td><td>0.8&times;10<sup>&minus;4</sup></td><td>2.5&times;10<sup>&minus;4</sup></td><td>m&sup2;/m&sup2; floor</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 3 &mdash; Stack Effect at Each Floor</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-07</span>
+                <div class="meth-body">
+                    <div class="meth-name">Stack-effect pressure differential</div>
+                    <div class="meth-formula">&Delta;P<sub>s</sub>(h) = 3460 &middot; ( 1&frasl;T<sub>o</sub> &minus; 1&frasl;T<sub>s</sub> ) &middot; ( h &minus; h<sub>NPP</sub> )</div>
+                    <div class="meth-where">h<sub>NPP</sub> = neutral pressure plane height, found iteratively via mass balance (EQ-08)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 4 &mdash; Wind Pressure</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-09</span>
+                <div class="meth-body">
+                    <div class="meth-name">Wind-induced pressure on building face</div>
+                    <div class="meth-formula">&Delta;P<sub>w</sub> = 0.5 &middot; C<sub>p</sub> &middot; &rho;<sub>o</sub> &middot; V<sub>w</sub>&sup2;</div>
+                    <div class="meth-where">C<sub>p</sub>: windward = +0.70, leeward = &minus;0.45, side = &minus;0.60</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 5 &mdash; Net Pressure at Each Floor</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-15</span>
+                <div class="meth-body">
+                    <div class="meth-name">Net stairwell-to-floor pressure differential</div>
+                    <div class="meth-formula">&Delta;P<sub>net</sub> = &Delta;P<sub>mech</sub> + &Delta;P<sub>stack</sub> + &Delta;P<sub>wind</sub> &minus; &Delta;P<sub>exhaust</sub></div>
+                    <div class="meth-where">
+                        &Delta;P<sub>exhaust</sub> applies only on the fire floor; &Delta;P<sub>net</sub> must satisfy:
+                        &Delta;P<sub>min</sub> &le; &Delta;P<sub>net</sub> &le; &Delta;P<sub>max</sub>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 6 &mdash; Leakage Flow Through Closed Doors</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-03</span>
+                <div class="meth-body">
+                    <div class="meth-name">Volumetric orifice flow</div>
+                    <div class="meth-formula">Q = C<sub>d</sub> &middot; A &middot; &radic;( 2 &middot; &Delta;P &frasl; &rho; )</div>
+                    <div class="meth-where">C<sub>d</sub> = 0.65 (discharge coefficient); summed across all floors</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 7 &mdash; Open-Door Flow Requirement</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-12</span>
+                <div class="meth-body">
+                    <div class="meth-name">Required flow through each open door</div>
+                    <div class="meth-formula">Q<sub>open</sub> = V<sub>min</sub> &middot; w<sub>d</sub> &middot; h<sub>d</sub></div>
+                    <div class="meth-where">Prevents smoke migration through open doorway into stairwell</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 8 &mdash; Door-Opening Force Check</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-10b</span>
+                <div class="meth-body">
+                    <div class="meth-name">Total door-opening force</div>
+                    <div class="meth-formula">F<sub>total</sub> = F<sub>closer</sub> + ( &Delta;P &middot; w<sub>d</sub> &middot; h<sub>d</sub> &frasl; 2 ) &middot; w<sub>d</sub> &frasl; ( w<sub>d</sub> &minus; d )</div>
+                    <div class="meth-where">d = handle-to-latch distance; F<sub>total</sub> must not exceed F<sub>max</sub> = ${cr.max_door_force || 133} N (${maxForceLbf} lbf)</div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-10b&prime;</span>
+                <div class="meth-body">
+                    <div class="meth-name">Maximum allowable &Delta;P from force constraint (rearranged)</div>
+                    <div class="meth-formula">&Delta;P<sub>max</sub> = 2 &middot; ( F<sub>max</sub> &minus; F<sub>closer</sub> ) &middot; ( w<sub>d</sub> &minus; d ) &frasl; ( w<sub>d</sub>&sup2; &middot; h<sub>d</sub> )</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 9 &mdash; Minimum Stair Supply Air</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-13</span>
+                <div class="meth-body">
+                    <div class="meth-name">Total supply &mdash; all doors closed</div>
+                    <div class="meth-formula">Q<sub>supply,closed</sub> = &Sigma; Q<sub>leak,doors</sub> + &Sigma; Q<sub>leak,walls</sub></div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-14</span>
+                <div class="meth-body">
+                    <div class="meth-name">Total supply &mdash; design doors open</div>
+                    <div class="meth-formula">Q<sub>supply,open</sub> = &Sigma; Q<sub>closed&nbsp;floors</sub> + n<sub>open</sub> &middot; Q<sub>open</sub> + &Sigma; Q<sub>walls</sub></div>
+                </div>
+            </div>
+            <div class="meth-eq meth-eq-highlight">
+                <span class="meth-id">DESIGN</span>
+                <div class="meth-body">
+                    <div class="meth-name">Governing supply air rate (primary output for fan sizing)</div>
+                    <div class="meth-formula">Q<sub>design</sub> = max( Q<sub>supply,closed</sub> , Q<sub>supply,open</sub> )</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Step 10 &mdash; Minimum Fire-Floor Exhaust (Depressurization)</h4>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-19</span>
+                <div class="meth-body">
+                    <div class="meth-name">Stairwell leakage into fire floor</div>
+                    <div class="meth-formula">Q<sub>stair</sub> = C<sub>d</sub> &middot; A<sub>Ld</sub> &middot; n<sub>d</sub> &middot; &radic;( 2 &middot; (&Delta;P<sub>mech</sub> + &Delta;P<sub>exhaust</sub>) &frasl; &rho;<sub>s</sub> )</div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-20</span>
+                <div class="meth-body">
+                    <div class="meth-name">Elevator shaft leakage into fire floor</div>
+                    <div class="meth-formula">Q<sub>elev</sub> = C<sub>d</sub> &middot; A<sub>Le</sub> &middot; n<sub>elev</sub> &middot; &radic;( 2 &middot; &Delta;P<sub>elev</sub> &frasl; &rho;<sub>i</sub> )</div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-21</span>
+                <div class="meth-body">
+                    <div class="meth-name">Exterior wall leakage into fire floor</div>
+                    <div class="meth-formula">Q<sub>ext</sub> = C<sub>d</sub> &middot; ( A<sub>Lw</sub> &middot; P<sub>face</sub> &middot; h<sub>f</sub> ) &middot; &radic;( 2 &middot; (&Delta;P<sub>exh</sub> + &Delta;P<sub>wind</sub>) &frasl; &rho;<sub>o</sub> )</div>
+                    <div class="meth-where">Summed across all four building faces</div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-22</span>
+                <div class="meth-body">
+                    <div class="meth-name">Vertical leakage (floor above + below fire floor)</div>
+                    <div class="meth-formula">Q<sub>vert</sub> = 2 &middot; C<sub>d</sub> &middot; ( A<sub>Lf</sub> &middot; A<sub>floor</sub> ) &middot; &radic;( 2 &middot; &Delta;P<sub>exhaust</sub> &frasl; &rho;<sub>i</sub> )</div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-24</span>
+                <div class="meth-body">
+                    <div class="meth-name">Fire plume air entrainment</div>
+                    <div class="meth-formula">Q<sub>fire</sub> = H&#775; &frasl; ( &rho;<sub>i</sub> &middot; c<sub>p</sub> &middot; (T<sub>f</sub> &minus; T<sub>i</sub>) )</div>
+                    <div class="meth-where">H&#775; = design fire HRR (W); c<sub>p</sub> = 1005 J/(kg&middot;K)</div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-23</span>
+                <div class="meth-body">
+                    <div class="meth-name">Thermal expansion volume</div>
+                    <div class="meth-formula">Q<sub>expansion</sub> = Q<sub>fire</sub> &middot; ( T<sub>f</sub> &frasl; T<sub>i</sub> &minus; 1 )</div>
+                </div>
+            </div>
+            <div class="meth-eq meth-eq-highlight">
+                <span class="meth-id">EQ-25</span>
+                <div class="meth-body">
+                    <div class="meth-name">Total fire-floor exhaust (at fire temperature)</div>
+                    <div class="meth-formula">Q<sub>exhaust</sub> = Q<sub>stair</sub> + Q<sub>elev</sub> + Q<sub>ext</sub> + Q<sub>vert</sub> + Q<sub>expansion</sub></div>
+                </div>
+            </div>
+            <div class="meth-eq">
+                <span class="meth-id">EQ-26</span>
+                <div class="meth-body">
+                    <div class="meth-name">Exhaust corrected to standard conditions (20&deg;C)</div>
+                    <div class="meth-formula">Q<sub>std</sub> = Q<sub>exhaust</sub> &middot; ( T<sub>f</sub> &frasl; T<sub>std</sub> )</div>
+                    <div class="meth-where">T<sub>std</sub> = 293.15 K (20&deg;C)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="meth-group">
+            <h4 class="meth-group-title">Steps 11&ndash;12 &mdash; Convergence &amp; Sensitivity</h4>
+            <div class="meth-note">
+                Steps 3&ndash;10 are solved <strong>iteratively</strong> because the NPP, stack pressures,
+                and flow rates are mutually dependent. The procedure repeats until supply and exhaust
+                totals converge within 0.5%. A mandatory <strong>sensitivity analysis</strong> then varies
+                wall leakage, door leakage, outdoor temperature, number of open doors, fire temperature,
+                wind speed, and elevator shaft configuration to identify the governing case.
+            </div>
+        </div>
+        `;
+
+        document.getElementById('est-methodology-content').innerHTML = html;
+    }
+
+    let methodologyCollapsed = false;
+    function toggleMethodology() {
+        methodologyCollapsed = !methodologyCollapsed;
+        const content = document.getElementById('est-methodology-content');
+        const btn = document.getElementById('meth-toggle-btn');
+        if (content) content.style.display = methodologyCollapsed ? 'none' : '';
+        if (btn) btn.textContent = methodologyCollapsed ? 'Expand' : 'Collapse';
     }
 
     function renderCalculationTraces(data) {
@@ -728,5 +1024,6 @@ const Est = (() => {
         runEstimation,
         generateReport,
         importPrjFile,
+        toggleMethodology,
     };
 })();

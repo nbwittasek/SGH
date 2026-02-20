@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stair Pressurization Estimation Tool &mdash; SGH</title>
     <link rel="stylesheet" href="/static/css/style.css?v=12">
-    <link rel="stylesheet" href="/static/css/estimation.css?v=4">
+    <link rel="stylesheet" href="/static/css/estimation.css?v=5">
 </head>
 <body>
     <div class="app-layout">
@@ -279,6 +279,15 @@
                 <div id="est-status" class="status-msg"></div>
                 <div id="est-warnings" style="display:none;"></div>
 
+                <!-- Calculation Methodology -->
+                <div id="est-methodology-section" style="display:none;">
+                    <h3>
+                        Calculation Methodology
+                        <button class="btn btn-sm meth-toggle" id="meth-toggle-btn" onclick="Est.toggleMethodology()">Collapse</button>
+                    </h3>
+                    <div id="est-methodology-content"></div>
+                </div>
+
                 <!-- System Summary -->
                 <div id="est-system-summary" style="display:none;">
                     <h3>System Summary</h3>
@@ -320,6 +329,6 @@
         </main>
     </div>
 
-    <script src="/static/js/estimation.js?v=4"></script>
+    <script src="/static/js/estimation.js?v=5"></script>
 </body>
 </html>
