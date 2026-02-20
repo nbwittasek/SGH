@@ -233,196 +233,227 @@ def generate_estimation_report(result: EstimationResult) -> str:
 
     n_traces = len(result.calculation_traces)
 
-    # --- Equation Methodology Reference (all 26 equations, KaTeX-rendered) ---
-    methodology_html = r"""
+    # --- Equation Methodology Reference (narrative structure, KaTeX-rendered) ---
+    min_dp = criteria.min_dp_closed
+    max_dp = criteria.max_dp_closed
+    min_dp_inwg = pa_to_inwg(min_dp)
+    max_dp_inwg = pa_to_inwg(max_dp)
+    exh_dp = criteria.floor_exhaust_dp
+    exh_dp_inwg = pa_to_inwg(exh_dp)
+    max_force = criteria.max_door_force
+    max_force_lbf = n_to_lbf(max_force)
+    min_vel = criteria.min_door_velocity
+
+    methodology_html = rf"""
     <div class="section">
-        <h2>Calculation Methodology &mdash; ASHRAE HSCE Equations (EQ-01 through EQ-26)</h2>
+        <h2>Calculation Methodology &mdash; ASHRAE HSCE</h2>
         <p class="meth-intro">
-            The following equations form the complete analytical framework used in
-            this estimation.  They are presented here in evaluation order as a
-            quick-reference before the numerical Calculation Trace that follows.
-            All variables use SI units; Imperial equivalents are shown in the trace.
+            This section presents the analytical procedure used to determine the minimum stair
+            pressurization supply air and fire-floor exhaust rates. The methodology follows the
+            algebraic equation method from ASHRAE <em>Handbook of Smoke Control Engineering</em>
+            (HSCE), with design criteria from NFPA&nbsp;92 and IBC&nbsp;Section&nbsp;909.
+            Equation numbers (EQ-01 through EQ-26) correspond to those in the Calculation Trace.
         </p>
 
-        <div class="meth-group">
-            <h3 class="meth-group-title">Air Properties</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-01</span>
-                <span class="meth-name">Air density (ideal gas)</span>
-                <div class="meth-formula">$$\rho = \frac{P_{\mathrm{atm}}}{R_{\mathrm{air}} \cdot T}$$</div>
-                <div class="meth-where">where \(R_{\mathrm{air}} = 287.058\;\text{J/(kg·K)}\), \(T\) in Kelvin</div>
+        <h3 class="meth-section-title">1. Design Objective</h3>
+        <p class="meth-prose">
+            The goal of stair pressurization is to maintain a positive pressure differential
+            between each pressurized stairwell and the adjacent building floor, preventing
+            smoke migration into the stairwell during a fire. Simultaneously, the system must
+            not over-pressurize the stairwell to the point where occupants cannot open egress
+            doors. These competing requirements define the design window:
+        </p>
+        <table class="info-table" style="margin:8px 0 8px 16px;font-size:8pt;">
+            <tr><td class="label">Min stairwell-to-corridor &Delta;P</td>
+                <td>{min_dp:.1f} Pa ({min_dp_inwg:.2f} in.&nbsp;w.g.) &mdash; IBC 909.20.5.1</td></tr>
+            <tr><td class="label">Max stairwell-to-corridor &Delta;P</td>
+                <td>{max_dp:.1f} Pa ({max_dp_inwg:.2f} in.&nbsp;w.g.) &mdash; NFPA 92 &sect;4.4.2.1</td></tr>
+            <tr><td class="label">Min open-door air velocity</td>
+                <td>{min_vel} m/s &mdash; IBC 909.20.5.2</td></tr>
+            <tr><td class="label">Max door-opening force</td>
+                <td>{max_force:.0f} N ({max_force_lbf:.0f} lbf) &mdash; IBC 1010.1.3</td></tr>
+            <tr><td class="label">Fire-floor exhaust &Delta;P</td>
+                <td>{exh_dp:.1f} Pa ({exh_dp_inwg:.2f} in.&nbsp;w.g.) &mdash; IBC 909.20.6</td></tr>
+        </table>
+
+        <h3 class="meth-section-title">2. Air Properties</h3>
+        <p class="meth-prose">
+            All flow and pressure calculations depend on air density, which varies between the
+            fire floor, the building interior, the outdoor environment, and the stairwell shaft.
+            Density is determined from the ideal gas law:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-01</span>
+            <div class="meth-eq-formula">$$\rho = \frac{{P_{{\mathrm{{atm}}}}}}{{R_{{\mathrm{{air}}}} \cdot T}}$$</div>
+            <div class="meth-eq-where">
+                where \(R_{{\mathrm{{air}}}} = 287.058\;\text{{J/(kg&middot;K)}}\) and \(T\) is in Kelvin.
+                Evaluated for outdoor (\(\rho_o\)), indoor (\(\rho_i\)), stairwell (\(\rho_s\)),
+                and fire-floor (\(\rho_f\)) temperatures.
             </div>
         </div>
 
-        <div class="meth-group">
-            <h3 class="meth-group-title">Leakage Areas</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-02</span>
-                <span class="meth-name">Door crack leakage area</span>
-                <div class="meth-formula">$$A_{Ld} = g_d \cdot \bigl(2\,w_d + 2\,h_d - w_{\mathrm{threshold}}\bigr)$$</div>
-                <div class="meth-where">where \(g_d\) = door gap width (m)</div>
+        <h3 class="meth-section-title">3. Building Leakage Characterization</h3>
+        <p class="meth-prose">
+            The pressurization fan must supply enough air to overcome all leakage paths while
+            maintaining the target pressure differential. For stairwell doors, leakage area
+            is computed from door geometry:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-02</span>
+            <div class="meth-eq-formula">$$A_{{Ld}} = g_d \cdot \bigl(2\,w_d + 2\,h_d - w_{{\mathrm{{threshold}}}}\bigr)$$</div>
+            <div class="meth-eq-where">
+                where \(g_d\) is the door gap width (m), \(w_d\) is door width, \(h_d\) is door height.
             </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-05</span>
-                <span class="meth-name">Parallel leakage areas</span>
-                <div class="meth-formula">$$A_{\mathrm{eff}} = A_1 + A_2 + \cdots + A_n$$</div>
+        </div>
+        <p class="meth-prose">
+            For other components, leakage areas are taken from ASHRAE HSCE tabulated values.
+            Multiple parallel paths add directly (EQ-05: \(A_{{\mathrm{{eff}}}} = A_1 + A_2 + \cdots\));
+            series paths combine as (EQ-06: \(1/A_{{\mathrm{{eff}}}}^2 = 1/A_1^2 + 1/A_2^2 + \cdots\)).
+        </p>
+
+        <h3 class="meth-section-title">4. Pressure Distribution Across Building Height</h3>
+        <p class="meth-prose">
+            The net pressure differential varies with height due to <strong>stack effect</strong>
+            (buoyancy) and <strong>wind</strong>. The stack-effect pressure at any height \(h\)
+            relative to the neutral pressure plane (NPP) is:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-07</span>
+            <div class="meth-eq-formula">$$\Delta P_s(h) = 3460 \left(\frac{{1}}{{T_o}} - \frac{{1}}{{T_s}}\right) \left(h - h_{{\mathrm{{NPP}}}}\right)$$</div>
+            <div class="meth-eq-where">
+                The constant 3460 Pa&middot;K/m derives from \(g \cdot P_{{\mathrm{{atm}}}} / R_{{\mathrm{{air}}}}\).
+                The NPP height is found iteratively via mass balance (EQ-08).
             </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-06</span>
-                <span class="meth-name">Series leakage areas</span>
-                <div class="meth-formula">$$\frac{1}{A_{\mathrm{eff}}^{\,2}} = \frac{1}{A_1^{\,2}} + \frac{1}{A_2^{\,2}} + \cdots + \frac{1}{A_n^{\,2}}$$</div>
+        </div>
+        <p class="meth-prose">
+            Wind-induced pressure on each building face is:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-09</span>
+            <div class="meth-eq-formula">$$\Delta P_w = \tfrac{{1}}{{2}}\,C_p\,\rho_o\,V_w^{{\,2}}$$</div>
+            <div class="meth-eq-where">
+                \(C_p\): windward = +0.70, leeward = &minus;0.45, side = &minus;0.60.
+            </div>
+        </div>
+        <p class="meth-prose">
+            The total pressure difference between the stairwell and each floor combines all effects:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-15</span>
+            <div class="meth-eq-formula">$$\Delta P_{{\mathrm{{net}}}} = \Delta P_{{\mathrm{{mech}}}} + \Delta P_{{\mathrm{{stack}}}} + \Delta P_{{\mathrm{{wind}}}} - \Delta P_{{\mathrm{{exhaust}}}}$$</div>
+            <div class="meth-eq-where">
+                \(\Delta P_{{\mathrm{{exhaust}}}}\) applies only on the fire floor.
+                Must satisfy \(\Delta P_{{\min}} \le \Delta P_{{\mathrm{{net}}}} \le \Delta P_{{\max}}\) at every floor.
             </div>
         </div>
 
-        <div class="meth-group">
-            <h3 class="meth-group-title">Orifice Flow</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-03</span>
-                <span class="meth-name">Volumetric orifice flow</span>
-                <div class="meth-formula">$$Q = C_d \cdot A \sqrt{\frac{2\,|\Delta P|}{\rho}}$$</div>
+        <h3 class="meth-section-title">5. Airflow Through Closed and Open Doors</h3>
+        <p class="meth-prose">
+            Flow through each leakage path is computed using the orifice equation:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-03</span>
+            <div class="meth-eq-formula">$$Q = C_d \cdot A \sqrt{{\frac{{2\,|\Delta P|}}{{\rho}}}}$$</div>
+            <div class="meth-eq-where">
+                where \(C_d = 0.65\) for building leakage paths.
             </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-04</span>
-                <span class="meth-name">Mass flow through orifice</span>
-                <div class="meth-formula">$$\dot{m} = C_d \cdot A \sqrt{2\,\rho\,|\Delta P|}$$</div>
+        </div>
+        <p class="meth-prose">
+            For open doors, a minimum air velocity prevents smoke migration:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-12</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{open}}}} = V_{{\min}} \cdot w_d \cdot h_d$$</div>
+        </div>
+
+        <h3 class="meth-section-title">6. Door-Opening Force Constraint</h3>
+        <p class="meth-prose">
+            The door-opening force includes the door closer force amplified by the
+            pressure differential acting on the door leaf:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-10b</span>
+            <div class="meth-eq-formula">$$F_{{\mathrm{{total}}}} = F_{{\mathrm{{closer}}}} + \frac{{\Delta P \cdot w_d \cdot h_d}}{{2}} \cdot \frac{{w_d}}{{w_d - d}}$$</div>
+            <div class="meth-eq-where">
+                Must satisfy \(F_{{\mathrm{{total}}}} \le\) {max_force:.0f} N ({max_force_lbf:.0f} lbf).
+                The rearranged form (EQ-10b&prime;) gives the maximum allowable &Delta;P.
             </div>
         </div>
 
-        <div class="meth-group">
-            <h3 class="meth-group-title">Pressure Differentials</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-07</span>
-                <span class="meth-name">Stack-effect pressure</span>
-                <div class="meth-formula">$$\Delta P_s(h) = 3460 \left(\frac{1}{T_o} - \frac{1}{T_s}\right)\left(h - h_{\mathrm{NPP}}\right)$$</div>
-                <div class="meth-where">Positive = stairwell at higher pressure than adjacent floor</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-08</span>
-                <span class="meth-name">Neutral Pressure Plane (NPP)</span>
-                <div class="meth-formula">$$\sum \dot{m}_{\mathrm{in}} = \sum \dot{m}_{\mathrm{out}} \quad\text{(solved iteratively by bisection)}$$</div>
-                <div class="meth-where">\(h_{\mathrm{NPP}}\) is the height where net mass flow through the envelope equals zero</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-09</span>
-                <span class="meth-name">Wind-induced pressure</span>
-                <div class="meth-formula">$$\Delta P_w = \tfrac{1}{2}\,C_p\,\rho_o\,V_w^{\,2}$$</div>
-                <div class="meth-where">\(C_p\): windward = +0.70, leeward = &minus;0.45, side = &minus;0.60</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-15</span>
-                <span class="meth-name">Net floor pressure differential</span>
-                <div class="meth-formula">$$\Delta P_{\mathrm{net}} = \Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{stack}} + \Delta P_{\mathrm{wind}} - \Delta P_{\mathrm{exhaust}}$$</div>
-            </div>
+        <h3 class="meth-section-title">7. Stairwell Supply Air Determination</h3>
+        <p class="meth-prose">
+            Supply air is computed for two scenarios. All doors closed:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-13</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{supply,closed}}}} = \sum Q_{{\mathrm{{leak,doors}}}} + \sum Q_{{\mathrm{{leak,walls}}}}$$</div>
+        </div>
+        <p class="meth-prose">
+            Design doors open:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-14</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{supply,open}}}} = \sum Q_{{\mathrm{{closed\;floors}}}} + n_{{\mathrm{{open}}}} \cdot Q_{{\mathrm{{open}}}} + \sum Q_{{\mathrm{{leak,walls}}}}$$</div>
+        </div>
+        <p class="meth-prose">
+            The design supply air rate is the larger of the two:
+        </p>
+        <div class="meth-eq-block" style="background:#eef6ff;border-color:#b0d4f1;border-width:2px;">
+            <span class="meth-eq-label">DESIGN</span>
+            <div class="meth-eq-formula">$$\boxed{{Q_{{\mathrm{{design}}}} = \max\!\left(Q_{{\mathrm{{supply,closed}}}},\; Q_{{\mathrm{{supply,open}}}}\right)}}$$</div>
         </div>
 
-        <div class="meth-group">
-            <h3 class="meth-group-title">Door Forces</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-10a</span>
-                <span class="meth-name">Pressure force on door</span>
-                <div class="meth-formula">$$F_p = \frac{\Delta P \cdot w_d \cdot h_d}{2}$$</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-10b</span>
-                <span class="meth-name">Total door-opening force</span>
-                <div class="meth-formula">$$F_{\mathrm{total}} = F_{\mathrm{closer}} + \frac{\Delta P \cdot w_d \cdot h_d}{2} \cdot \frac{w_d}{w_d - d}$$</div>
-                <div class="meth-where">where \(d\) = handle-to-latch distance; must not exceed code max (133.4 N / 30 lbf)</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-10b&prime;</span>
-                <span class="meth-name">Max allowable pressure from door force (rearranged)</span>
-                <div class="meth-formula">$$\Delta P_{\max} = \frac{2\,(F_{\max} - F_{\mathrm{closer}})\,(w_d - d)}{w_d^{\,2} \cdot h_d}$$</div>
-            </div>
+        <h3 class="meth-section-title">8. Fire Floor Exhaust (Depressurization)</h3>
+        <p class="meth-prose">
+            The exhaust system must remove all airflows entering the fire floor: stairwell
+            leakage (EQ-19), elevator shaft leakage (EQ-20), exterior wall leakage (EQ-21),
+            vertical leakage from adjacent floors (EQ-22), and thermal expansion (EQ-23/24).
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-19</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{stair}}}} = C_d \cdot A_{{Ld}} \cdot n_d \cdot \sqrt{{\frac{{2\,(\Delta P_{{\mathrm{{mech}}}} + \Delta P_{{\mathrm{{exhaust}}}})}}{{\rho_s}}}}$$</div>
+        </div>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-20</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{elev}}}} = C_d \cdot A_{{Le}} \cdot n_{{\mathrm{{elev}}}} \cdot \sqrt{{\frac{{2\,\Delta P_{{\mathrm{{elev}}}}}}{{\rho_i}}}}$$</div>
+        </div>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-21</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{ext}}}} = \sum_{{\text{{faces}}}} C_d \cdot (A_{{Lw}} \cdot P_{{\mathrm{{face}}}} \cdot h_f) \cdot \sqrt{{\frac{{2\,(\Delta P_{{\mathrm{{exhaust}}}} + \Delta P_{{\mathrm{{wind}}}})}}{{\rho_o}}}}$$</div>
+        </div>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-22</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{vert}}}} = 2\,C_d \cdot (A_{{Lf}} \cdot A_{{\mathrm{{floor}}}}) \cdot \sqrt{{\frac{{2\,\Delta P_{{\mathrm{{exhaust}}}}}}{{\rho_i}}}}$$</div>
+        </div>
+        <p class="meth-prose">
+            Thermal expansion: air entrained by the fire (EQ-24) expands as it heats:
+        </p>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-23/24</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{expansion}}}} = \frac{{\dot{{H}}}}{{\rho_i \cdot c_p \cdot (T_f - T_i)}} \cdot \left(\frac{{T_f}}{{T_i}} - 1\right)$$</div>
+        </div>
+        <p class="meth-prose">
+            The total exhaust and its standard-conditions equivalent:
+        </p>
+        <div class="meth-eq-block" style="background:#eef6ff;border-color:#b0d4f1;border-width:2px;">
+            <span class="meth-eq-label">EQ-25</span>
+            <div class="meth-eq-formula">$$\boxed{{Q_{{\mathrm{{exhaust}}}} = Q_{{\mathrm{{stair}}}} + Q_{{\mathrm{{elev}}}} + Q_{{\mathrm{{ext}}}} + Q_{{\mathrm{{vert}}}} + Q_{{\mathrm{{expansion}}}}}}$$</div>
+        </div>
+        <div class="meth-eq-block">
+            <span class="meth-eq-label">EQ-26</span>
+            <div class="meth-eq-formula">$$Q_{{\mathrm{{std}}}} = Q_{{\mathrm{{exhaust}}}} \cdot \frac{{T_f}}{{T_{{\mathrm{{std}}}}}}$$</div>
+            <div class="meth-eq-where">\(T_{{\mathrm{{std}}}} = 293.15\;\text{{K}}\) (20&deg;C)</div>
         </div>
 
-        <div class="meth-group">
-            <h3 class="meth-group-title">Doorway &amp; Open-Door Flow</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-11</span>
-                <span class="meth-name">Average doorway velocity</span>
-                <div class="meth-formula">$$V_{\mathrm{door}} = \frac{Q_{\mathrm{door}}}{w_d \cdot h_d}$$</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-12</span>
-                <span class="meth-name">Required open-door flow</span>
-                <div class="meth-formula">$$Q_{\mathrm{open}} = V_{\min} \cdot w_d \cdot h_d$$</div>
-                <div class="meth-where">\(V_{\min}\) = 1.0 m/s (sprinklered) or 1.7 m/s (non-sprinklered)</div>
-            </div>
-        </div>
-
-        <div class="meth-group">
-            <h3 class="meth-group-title">Stairwell Supply Air</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-13</span>
-                <span class="meth-name">Total supply &mdash; all doors closed</span>
-                <div class="meth-formula">$$Q_{\mathrm{supply,closed}} = \sum Q_{\mathrm{leak,doors}} + \sum Q_{\mathrm{leak,walls}}$$</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-14</span>
-                <span class="meth-name">Total supply &mdash; design doors open</span>
-                <div class="meth-formula">$$Q_{\mathrm{supply,open}} = \sum Q_{\mathrm{closed\;floors}} + n_{\mathrm{open}} \cdot Q_{\mathrm{open}} + \sum Q_{\mathrm{walls}}$$</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">DESIGN</span>
-                <span class="meth-name">Governing supply air rate</span>
-                <div class="meth-formula">$$\boxed{Q_{\mathrm{design}} = \max\!\left(Q_{\mathrm{supply,closed}},\; Q_{\mathrm{supply,open}}\right)}$$</div>
-            </div>
-        </div>
-
-        <div class="meth-group">
-            <h3 class="meth-group-title">Fire Floor Exhaust (Depressurization)</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-19</span>
-                <span class="meth-name">Stairwell leakage into fire floor</span>
-                <div class="meth-formula">$$Q_{\mathrm{stair}} = C_d \cdot A_{Ld} \cdot n_d \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{exhaust}})}{\rho_s}}$$</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-20</span>
-                <span class="meth-name">Elevator shaft leakage into fire floor</span>
-                <div class="meth-formula">$$Q_{\mathrm{elev}} = C_d \cdot A_{Le} \cdot n_{\mathrm{elev}} \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{elev}}}{\rho_i}}$$</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-21</span>
-                <span class="meth-name">Exterior wall leakage into fire floor</span>
-                <div class="meth-formula">$$Q_{\mathrm{ext}} = C_d \cdot (A_{Lw} \cdot P_{\mathrm{face}} \cdot h_f) \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{exh}} + \Delta P_{\mathrm{wind}})}{\rho_o}}$$</div>
-                <div class="meth-where">Summed over all building faces</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-22</span>
-                <span class="meth-name">Vertical leakage (floor above + below)</span>
-                <div class="meth-formula">$$Q_{\mathrm{vert}} = 2\,C_d \cdot (A_{Lf} \cdot A_{\mathrm{floor}}) \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{exhaust}}}{\rho_i}}$$</div>
-            </div>
-        </div>
-
-        <div class="meth-group">
-            <h3 class="meth-group-title">Fire &amp; Thermal Effects</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-24</span>
-                <span class="meth-name">Fire plume air entrainment</span>
-                <div class="meth-formula">$$Q_{\mathrm{fire}} = \frac{\dot{H}}{\rho_i \cdot c_p \cdot (T_f - T_i)}$$</div>
-                <div class="meth-where">\(\dot{H}\) = design fire HRR (W); \(c_p = 1005\;\text{J/(kg·K)}\)</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-23</span>
-                <span class="meth-name">Thermal expansion volume</span>
-                <div class="meth-formula">$$Q_{\mathrm{expansion}} = Q_{\mathrm{fire}} \cdot \left(\frac{T_f}{T_i} - 1\right)$$</div>
-            </div>
-        </div>
-
-        <div class="meth-group">
-            <h3 class="meth-group-title">Exhaust Totals</h3>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-25</span>
-                <span class="meth-name">Total fire floor exhaust (at fire temperature)</span>
-                <div class="meth-formula">$$\boxed{Q_{\mathrm{exhaust}} = Q_{\mathrm{stair}} + Q_{\mathrm{elev}} + Q_{\mathrm{ext}} + Q_{\mathrm{vert}} + Q_{\mathrm{expansion}}}$$</div>
-            </div>
-            <div class="meth-eq">
-                <span class="meth-id">EQ-26</span>
-                <span class="meth-name">Exhaust at standard conditions (20&deg;C)</span>
-                <div class="meth-formula">$$Q_{\mathrm{std}} = Q_{\mathrm{exhaust}} \cdot \frac{T_f}{T_{\mathrm{std}}}$$</div>
-                <div class="meth-where">\(T_{\mathrm{std}} = 293.15\;\text{K}\) (20&deg;C)</div>
-            </div>
-        </div>
+        <h3 class="meth-section-title">9. Iterative Solution and Sensitivity Analysis</h3>
+        <p class="meth-prose">
+            The equations are mutually dependent (NPP depends on flows, which depend on
+            pressures, which depend on NPP). The solution iterates until supply and exhaust
+            totals converge within 0.5%. A mandatory sensitivity analysis then varies wall
+            leakage, door leakage (&plusmn;50%), outdoor temperature, number of open doors,
+            fire temperature, wind speed, and elevator shaft configuration to identify the
+            governing case.
+        </p>
     </div>
 
     <div class="page-break"></div>
@@ -500,41 +531,39 @@ def generate_estimation_report(result: EstimationResult) -> str:
         .trace-result {{ color: #1a2332; }}
         .warn-list {{ padding-left: 20px; }}
         .warn-list li {{ color: #d68910; margin-bottom: 4px; }}
-        /* Methodology section */
+        /* Methodology section — narrative style */
         .meth-intro {{
-            font-size: 8.5pt; color: #555; margin-bottom: 14px; line-height: 1.5;
+            font-size: 8.5pt; color: #444; margin-bottom: 14px; line-height: 1.6;
+            padding: 8px 12px; background: #f0f7ff;
+            border-left: 3px solid #2e86de; border-radius: 0 4px 4px 0;
         }}
-        .meth-group {{
-            margin-bottom: 14px;
+        .meth-section-title {{
+            font-size: 9.5pt; color: #1a2332; font-weight: 700;
+            border-bottom: 2px solid #2e86de; padding-bottom: 3px;
+            margin: 14px 0 6px;
         }}
-        .meth-group-title {{
-            font-size: 9pt; color: #1a2332; border-left: 3px solid #2e86de;
-            padding-left: 8px; margin-bottom: 6px;
+        .meth-prose {{
+            font-size: 8.5pt; color: #444; line-height: 1.6;
+            margin: 6px 0; text-align: justify;
         }}
-        .meth-eq {{
+        .meth-eq-block {{
             background: #f8f9fa; border: 1px solid #e8ecf0; border-radius: 4px;
-            padding: 6px 12px; margin: 0 0 5px 16px;
-            display: flex; align-items: flex-start; gap: 10px;
+            padding: 6px 12px; margin: 6px 0;
         }}
-        .meth-id {{
-            flex-shrink: 0;
+        .meth-eq-label {{
             font-family: "Consolas", "Courier New", monospace;
-            font-weight: 700; color: #2e86de; font-size: 8pt;
-            text-align: center; min-width: 52px;
-            background: #e8f0fe; border-radius: 3px; padding: 3px 6px;
-            margin-top: 2px;
+            font-weight: 700; color: #2e86de; font-size: 7.5pt;
+            background: #e8f0fe; border-radius: 3px; padding: 2px 6px;
+            display: inline-block; margin-bottom: 2px;
         }}
-        .meth-name {{
-            font-size: 8pt; color: #555; font-style: italic;
+        .meth-eq-formula {{
+            color: #1a2332; padding: 2px 0; text-align: center;
         }}
-        .meth-formula {{
-            padding: 2px 0; color: #1a2332;
-        }}
-        .meth-formula .katex-display {{
+        .meth-eq-formula .katex-display {{
             margin: 4px 0 2px;
         }}
-        .meth-where {{
-            font-size: 7.5pt; color: #7f8c9b;
+        .meth-eq-where {{
+            font-size: 7.5pt; color: #666; line-height: 1.4; margin-top: 2px;
         }}
         .print-btn {{
             position: fixed; top: 10px; right: 10px; background: #2e86de; color: #fff;

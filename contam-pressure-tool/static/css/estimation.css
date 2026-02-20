@@ -232,107 +232,91 @@
 
 .meth-intro {
     font-size: 9.5pt;
-    color: #555;
-    line-height: 1.6;
-    margin-bottom: 18px;
-    padding: 10px 14px;
+    color: #444;
+    line-height: 1.7;
+    margin-bottom: 20px;
+    padding: 12px 16px;
     background: #f0f7ff;
     border-left: 3px solid #2e86de;
     border-radius: 0 4px 4px 0;
 }
 
-.meth-group {
-    margin-bottom: 18px;
+.meth-section {
+    margin-bottom: 24px;
 }
 
-.meth-group-title {
-    font-size: 10pt !important;
+.meth-section-title {
+    font-size: 11pt !important;
     color: #1a2332 !important;
-    border-bottom: none !important;
-    border-left: 3px solid #2e86de;
-    padding: 0 0 0 10px !important;
-    margin: 16px 0 8px !important;
+    font-weight: 700;
+    border-bottom: 2px solid #2e86de !important;
+    padding: 0 0 4px 0 !important;
+    margin: 20px 0 10px !important;
 }
 
-.meth-eq {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
+.meth-prose {
+    font-size: 9.5pt;
+    color: #444;
+    line-height: 1.7;
+    margin: 8px 0;
+    text-align: justify;
+}
+
+.meth-prose .katex { font-size: 1.05em; }
+
+.meth-eq-block {
     background: #f8f9fa;
     border: 1px solid #e8ecf0;
     border-radius: 5px;
-    padding: 8px 14px;
-    margin: 0 0 6px 18px;
+    padding: 10px 16px;
+    margin: 10px 0 10px 0;
 }
 
-.meth-eq-highlight {
+.meth-eq-block.highlight {
     background: #eef6ff;
     border-color: #b0d4f1;
     border-width: 2px;
 }
 
-.meth-id {
-    flex-shrink: 0;
+.meth-eq-label {
     font-family: "Consolas", "Courier New", monospace;
     font-weight: 700;
     font-size: 8pt;
     color: #2e86de;
     background: #e8f0fe;
     border-radius: 3px;
-    padding: 3px 8px;
-    text-align: center;
-    min-width: 52px;
-    margin-top: 2px;
+    padding: 2px 8px;
+    display: inline-block;
+    margin-bottom: 4px;
 }
 
-.meth-body {
-    flex: 1;
-    min-width: 0;
-}
-
-.meth-name {
-    font-size: 8.5pt;
-    color: #666;
-    font-style: italic;
-    margin-bottom: 2px;
-}
-
-.meth-formula {
+.meth-eq-formula {
     color: #1a2332;
     padding: 2px 0;
     line-height: 1.4;
+    text-align: center;
 }
 
-/* KaTeX display equations inside methodology cards: reduce vertical margin */
-.meth-formula .katex-display {
+/* KaTeX display equations: reduce vertical margin */
+.meth-eq-formula .katex-display {
     margin: 4px 0 2px;
 }
 
-/* Slightly scale up KaTeX for better readability in the app */
-.meth-formula .katex {
+/* Slightly scale up KaTeX for better readability */
+.meth-eq-formula .katex {
     font-size: 1.15em;
 }
 
-.meth-where {
-    font-size: 8pt;
-    color: #7f8c9b;
-    line-height: 1.4;
-}
-
-.meth-note {
-    background: #f8f9fa;
-    border: 1px solid #e8ecf0;
-    border-radius: 5px;
-    padding: 10px 14px;
-    margin-left: 18px;
-    font-size: 9pt;
-    color: #555;
+.meth-eq-where {
+    font-size: 8.5pt;
+    color: #666;
     line-height: 1.5;
+    margin-top: 4px;
 }
 
 .meth-criteria-table {
-    margin: 0 0 6px 18px;
-    width: calc(100% - 18px);
+    margin: 8px 0;
+    width: 100%;
 }
 
 .meth-criteria-table td {
@@ -341,13 +325,42 @@
 }
 
 .meth-leak-table {
-    margin: 8px 0 6px 18px;
-    width: calc(100% - 18px);
+    margin: 8px 0;
+    width: 100%;
 }
 
 .meth-leak-table td:first-child {
     text-align: left;
     font-weight: 600;
+}
+
+/* Legacy classes kept for backward compatibility */
+.meth-group { margin-bottom: 18px; }
+.meth-group-title {
+    font-size: 10pt !important; color: #1a2332 !important;
+    border-bottom: none !important; border-left: 3px solid #2e86de;
+    padding: 0 0 0 10px !important; margin: 16px 0 8px !important;
+}
+.meth-eq {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: #f8f9fa; border: 1px solid #e8ecf0; border-radius: 5px;
+    padding: 8px 14px; margin: 0 0 6px 18px;
+}
+.meth-eq-highlight { background: #eef6ff; border-color: #b0d4f1; border-width: 2px; }
+.meth-id {
+    flex-shrink: 0; font-family: "Consolas", "Courier New", monospace;
+    font-weight: 700; font-size: 8pt; color: #2e86de; background: #e8f0fe;
+    border-radius: 3px; padding: 3px 8px; text-align: center; min-width: 52px; margin-top: 2px;
+}
+.meth-body { flex: 1; min-width: 0; }
+.meth-name { font-size: 8.5pt; color: #666; font-style: italic; margin-bottom: 2px; }
+.meth-formula { color: #1a2332; padding: 2px 0; line-height: 1.4; }
+.meth-formula .katex-display { margin: 4px 0 2px; }
+.meth-formula .katex { font-size: 1.15em; }
+.meth-where { font-size: 8pt; color: #7f8c9b; line-height: 1.4; }
+.meth-note {
+    background: #f8f9fa; border: 1px solid #e8ecf0; border-radius: 5px;
+    padding: 10px 14px; margin-left: 18px; font-size: 9pt; color: #555; line-height: 1.5;
 }
 
 /* Calculation Trace Blocks */
