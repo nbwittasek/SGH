@@ -22,32 +22,117 @@ from .estimation_models import (
 )
 
 # ---------------------------------------------------------------------------
-# KaTeX display-math formulas keyed by equation ID
+# Pure-HTML rendered equations keyed by equation ID (no LaTeX / KaTeX needed)
+# Uses CSS classes: .eq-frac / .eq-num / .eq-den for stacked fractions,
+# .eq-sqrt / .eq-rad for radical signs with overline.
 # ---------------------------------------------------------------------------
-_KATEX_FORMULAS: Dict[str, str] = {
-    "EQ-01": r"\rho = \frac{P_{\mathrm{atm}}}{R_{\mathrm{air}} \cdot T}",
-    "EQ-02": r"A_{Ld} = g_d \cdot \bigl(2\,w_d + 2\,h_d - w_{\mathrm{threshold}}\bigr)",
-    "EQ-03": r"Q = C_d \cdot A \sqrt{\frac{2\,|\Delta P|}{\rho}}",
-    "EQ-04": r"\dot{m} = C_d \cdot A \sqrt{2\,\rho\,|\Delta P|}",
-    "EQ-05": r"A_{\mathrm{eff}} = A_1 + A_2 + \cdots + A_n",
-    "EQ-06": r"\frac{1}{A_{\mathrm{eff}}^2} = \frac{1}{A_1^2} + \frac{1}{A_2^2} + \cdots + \frac{1}{A_n^2}",
-    "EQ-07": r"\Delta P_s(h) = 3460 \left(\frac{1}{T_o} - \frac{1}{T_s}\right)(h - h_{\mathrm{NPP}})",
-    "EQ-09": r"\Delta P_w = \tfrac{1}{2}\,C_p\,\rho_o\,V_w^{\,2}",
-    "EQ-10b": r"F_{\mathrm{total}} = F_{\mathrm{closer}} + \frac{\Delta P \cdot w_d \cdot h_d}{2} \cdot \frac{w_d}{w_d - d}",
-    "EQ-12": r"Q_{\mathrm{open}} = V_{\min} \cdot w_d \cdot h_d",
-    "EQ-13": r"Q_{\mathrm{supply,closed}} = \sum Q_{\mathrm{leak,doors}} + \sum Q_{\mathrm{leak,walls}}",
-    "EQ-14": r"Q_{\mathrm{supply,open}} = \sum Q_{\mathrm{closed\;floors}} + n_{\mathrm{open}} \cdot Q_{\mathrm{open}} + \sum Q_{\mathrm{leak,walls}}",
-    "EQ-15": r"\Delta P_{\mathrm{net}} = \Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{stack}} + \Delta P_{\mathrm{wind}} - \Delta P_{\mathrm{exhaust}}",
-    "EQ-19": r"Q_{\mathrm{stair}} = C_d \cdot A_{Ld} \cdot n_d \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{mech}} + \Delta P_{\mathrm{exhaust}})}{\rho_s}}",
-    "EQ-20": r"Q_{\mathrm{elev}} = C_d \cdot A_{Le} \cdot n_{\mathrm{elev}} \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{elev}}}{\rho_i}}",
-    "EQ-21": r"Q_{\mathrm{ext}} = \sum_{\text{faces}} C_d \cdot (A_{Lw} \cdot P_{\text{face}} \cdot h_f) \cdot \sqrt{\frac{2\,(\Delta P_{\mathrm{exh}} + \Delta P_{\mathrm{wind}})}{\rho_o}}",
-    "EQ-22": r"Q_{\mathrm{vert}} = 2\,C_d \cdot (A_{Lf} \cdot A_{\mathrm{floor}}) \cdot \sqrt{\frac{2\,\Delta P_{\mathrm{exhaust}}}{\rho_i}}",
-    "EQ-23": r"Q_{\mathrm{expansion}} = Q_{\mathrm{fire}} \cdot \left(\frac{T_f}{T_i} - 1\right)",
-    "EQ-24": r"Q_{\mathrm{fire}} = \frac{\dot{H}}{\rho_i \cdot c_p \cdot (T_f - T_i)}",
-    "EQ-25": r"Q_{\mathrm{exhaust}} = Q_{\mathrm{stair}} + Q_{\mathrm{elev}} + Q_{\mathrm{ext}} + Q_{\mathrm{vert}} + Q_{\mathrm{expansion}}",
-    "EQ-26": r"Q_{\mathrm{std}} = Q_{\mathrm{exhaust}} \cdot \frac{T_f}{T_{\mathrm{std}}}",
-    "DESIGN": r"Q_{\mathrm{design}} = \max\!\left(Q_{\mathrm{supply,closed}},\; Q_{\mathrm{supply,open}}\right)",
-    "SETUP": r"\Delta P_{\mathrm{mech}} = \max(\Delta P_{\min,\mathrm{closed}},\; \Delta P_{\mathrm{exhaust}})",
+
+def _frac(num: str, den: str) -> str:
+    """Helper: inline stacked fraction."""
+    return (
+        f'<span class="eq-frac"><span class="eq-num">{num}</span>'
+        f'<span class="eq-den">{den}</span></span>'
+    )
+
+def _sqrt(inner: str) -> str:
+    """Helper: square-root with overline bar on radicand."""
+    return f'<span class="eq-sqrt">&radic;<span class="eq-rad">{inner}</span></span>'
+
+_HTML_FORMULAS: Dict[str, str] = {
+    "EQ-01": (
+        f'&rho; = {_frac("P<sub>atm</sub>", "R<sub>air</sub> &middot; T")}'
+    ),
+    "EQ-02": (
+        'A<sub>Ld</sub> = g<sub>d</sub> &middot; '
+        '(2 w<sub>d</sub> + 2 h<sub>d</sub> &minus; w<sub>threshold</sub>)'
+    ),
+    "EQ-03": (
+        f'Q = C<sub>d</sub> &middot; A &middot; '
+        f'{_sqrt(_frac("2 |&Delta;P|", "&rho;"))}'
+    ),
+    "EQ-04": (
+        f'&#7745; = C<sub>d</sub> &middot; A &middot; '
+        f'{_sqrt("2 &middot; &rho; &middot; |&Delta;P|")}'
+    ),
+    "EQ-05": (
+        'A<sub>eff</sub> = A<sub>1</sub> + A<sub>2</sub> + &hellip; + A<sub>n</sub>'
+    ),
+    "EQ-06": (
+        f'{_frac("1", "A<sub>eff</sub><sup>2</sup>")} = '
+        f'{_frac("1", "A<sub>1</sub><sup>2</sup>")} + '
+        f'{_frac("1", "A<sub>2</sub><sup>2</sup>")} + &hellip; + '
+        f'{_frac("1", "A<sub>n</sub><sup>2</sup>")}'
+    ),
+    "EQ-07": (
+        f'&Delta;P<sub>s</sub>(h) = 3460 '
+        f'({_frac("1", "T<sub>o</sub>")} &minus; '
+        f'{_frac("1", "T<sub>s</sub>")}) '
+        f'(h &minus; h<sub>NPP</sub>)'
+    ),
+    "EQ-09": (
+        '&Delta;P<sub>w</sub> = &frac12; C<sub>p</sub> '
+        '&rho;<sub>o</sub> V<sub>w</sub><sup>2</sup>'
+    ),
+    "EQ-10b": (
+        f'F<sub>total</sub> = F<sub>closer</sub> + '
+        f'{_frac("&Delta;P &middot; w<sub>d</sub> &middot; h<sub>d</sub>", "2")} &middot; '
+        f'{_frac("w<sub>d</sub>", "w<sub>d</sub> &minus; d")}'
+    ),
+    "EQ-12": (
+        'Q<sub>open</sub> = V<sub>min</sub> &middot; w<sub>d</sub> &middot; h<sub>d</sub>'
+    ),
+    "EQ-13": (
+        'Q<sub>supply,closed</sub> = &Sigma; Q<sub>leak,doors</sub> '
+        '+ &Sigma; Q<sub>leak,walls</sub>'
+    ),
+    "EQ-14": (
+        'Q<sub>supply,open</sub> = &Sigma; Q<sub>closed floors</sub> + '
+        'n<sub>open</sub> &middot; Q<sub>open</sub> + &Sigma; Q<sub>leak,walls</sub>'
+    ),
+    "EQ-15": (
+        '&Delta;P<sub>net</sub> = &Delta;P<sub>mech</sub> + &Delta;P<sub>stack</sub> '
+        '+ &Delta;P<sub>wind</sub> &minus; &Delta;P<sub>exhaust</sub>'
+    ),
+    "EQ-19": (
+        f'Q<sub>stair</sub> = C<sub>d</sub> &middot; A<sub>Ld</sub> &middot; n<sub>d</sub> &middot; '
+        f'{_sqrt(_frac("2 (&Delta;P<sub>mech</sub> + &Delta;P<sub>exhaust</sub>)", "&rho;<sub>s</sub>"))}'
+    ),
+    "EQ-20": (
+        f'Q<sub>elev</sub> = C<sub>d</sub> &middot; A<sub>Le</sub> &middot; n<sub>elev</sub> &middot; '
+        f'{_sqrt(_frac("2 &Delta;P<sub>elev</sub>", "&rho;<sub>i</sub>"))}'
+    ),
+    "EQ-21": (
+        f'Q<sub>ext</sub> = &Sigma;<sub>faces</sub> C<sub>d</sub> &middot; '
+        f'(A<sub>Lw</sub> &middot; P<sub>face</sub> &middot; h<sub>f</sub>) &middot; '
+        f'{_sqrt(_frac("2 (&Delta;P<sub>exh</sub> + &Delta;P<sub>wind</sub>)", "&rho;<sub>o</sub>"))}'
+    ),
+    "EQ-22": (
+        f'Q<sub>vert</sub> = 2 C<sub>d</sub> &middot; '
+        f'(A<sub>Lf</sub> &middot; A<sub>floor</sub>) &middot; '
+        f'{_sqrt(_frac("2 &Delta;P<sub>exhaust</sub>", "&rho;<sub>i</sub>"))}'
+    ),
+    "EQ-23": (
+        f'Q<sub>expansion</sub> = Q<sub>fire</sub> &middot; '
+        f'({_frac("T<sub>f</sub>", "T<sub>i</sub>")} &minus; 1)'
+    ),
+    "EQ-24": (
+        f'Q<sub>fire</sub> = '
+        f'{_frac("&#7716;", "&rho;<sub>i</sub> &middot; c<sub>p</sub> &middot; (T<sub>f</sub> &minus; T<sub>i</sub>)")}'
+    ),
+    "EQ-25": (
+        'Q<sub>exhaust</sub> = Q<sub>stair</sub> + Q<sub>elev</sub> '
+        '+ Q<sub>ext</sub> + Q<sub>vert</sub> + Q<sub>expansion</sub>'
+    ),
+    "EQ-26": (
+        f'Q<sub>std</sub> = Q<sub>exhaust</sub> &middot; '
+        f'{_frac("T<sub>f</sub>", "T<sub>std</sub>")}'
+    ),
+    "DESIGN": (
+        'Q<sub>design</sub> = max(Q<sub>supply,closed</sub> , Q<sub>supply,open</sub>)'
+    ),
+    "SETUP": (
+        '&Delta;P<sub>mech</sub> = max(&Delta;P<sub>min,closed</sub> , &Delta;P<sub>exhaust</sub>)'
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -198,13 +283,13 @@ def _build_ashrae_trace(traces: List[CalculationTrace]) -> str:
             # Emit reference equation block on first occurrence
             if eq_id not in emitted_refs:
                 emitted_refs.add(eq_id)
-                katex_formula = _KATEX_FORMULAS.get(eq_id, "")
+                html_formula = _HTML_FORMULAS.get(eq_id, "")
                 highlight = " calc-eq-highlight" if eq_id in _HIGHLIGHT_EQ_IDS else ""
-                if katex_formula:
+                if html_formula:
                     parts.append(
                         f'<div class="calc-eq-reference{highlight}">'
                         f'<span class="calc-eq-tag">{_esc(eq_id)}</span>'
-                        f'<div class="calc-eq-katex">$${katex_formula}$$</div>'
+                        f'<div class="calc-eq-display">{html_formula}</div>'
                         '</div>'
                     )
 
@@ -230,13 +315,13 @@ def _build_ashrae_trace(traces: List[CalculationTrace]) -> str:
             eq_id = tr.equation_id
             if eq_id not in emitted_refs_extra:
                 emitted_refs_extra.add(eq_id)
-                katex_formula = _KATEX_FORMULAS.get(eq_id, "")
+                html_formula = _HTML_FORMULAS.get(eq_id, "")
                 highlight = " calc-eq-highlight" if eq_id in _HIGHLIGHT_EQ_IDS else ""
-                if katex_formula:
+                if html_formula:
                     parts.append(
                         f'<div class="calc-eq-reference{highlight}">'
                         f'<span class="calc-eq-tag">{_esc(eq_id)}</span>'
-                        f'<div class="calc-eq-katex">$${katex_formula}$$</div>'
+                        f'<div class="calc-eq-display">{html_formula}</div>'
                         '</div>'
                     )
             parts.append(_render_trace_instance(tr))
@@ -762,11 +847,29 @@ def generate_estimation_report(result: EstimationResult) -> str:
             background: #f6f8fb; border: 1px solid #dde2e8; border-radius: 5px;
             padding: 8px 14px; margin: 10px 0 6px; position: relative;
         }}
-        .calc-eq-reference .calc-eq-katex {{
-            text-align: center; padding: 4px 0;
+        .calc-eq-display {{
+            text-align: center; padding: 6px 0;
+            font-size: 10pt; color: #1a2332; line-height: 1.6;
+            font-family: "Segoe UI", Arial, Helvetica, sans-serif;
         }}
-        .calc-eq-reference .calc-eq-katex .katex-display {{
-            margin: 4px 0;
+        /* Stacked fractions */
+        .eq-frac {{
+            display: inline-flex; flex-direction: column; align-items: center;
+            vertical-align: middle; margin: 0 3px; line-height: 1.2;
+        }}
+        .eq-num {{
+            border-bottom: 1.5px solid #333; padding: 0 5px 2px;
+        }}
+        .eq-den {{
+            padding: 2px 5px 0;
+        }}
+        /* Radical sign with overline */
+        .eq-sqrt {{
+            white-space: nowrap;
+        }}
+        .eq-rad {{
+            border-top: 1.5px solid #333; padding: 1px 4px 0 2px;
+            margin-left: 1px;
         }}
         .calc-eq-highlight {{
             background: #eef6ff; border-color: #a0c4e8; border-width: 2px;
