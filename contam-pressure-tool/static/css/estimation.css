@@ -363,6 +363,45 @@
     padding: 10px 14px; margin-left: 18px; font-size: 9pt; color: #555; line-height: 1.5;
 }
 
+/* Pure HTML equation rendering (stacked fractions, radicals) */
+.eq-frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 3px;
+    line-height: 1.2;
+}
+.eq-num {
+    border-bottom: 1.5px solid #333;
+    padding: 0 5px 2px;
+}
+.eq-den {
+    padding: 2px 5px 0;
+}
+.eq-sqrt {
+    white-space: nowrap;
+}
+.eq-rad {
+    border-top: 1.5px solid #333;
+    padding: 1px 4px 0 2px;
+    margin-left: 1px;
+}
+
+/* Display equation formula sizing */
+.meth-eq-formula {
+    font-size: 1.15em;
+    line-height: 2;
+}
+
+/* Boxed highlight for DESIGN/EQ-25 equations */
+.meth-eq-boxed {
+    display: inline-block;
+    border: 2px solid #2e86de;
+    padding: 4px 14px;
+    border-radius: 4px;
+}
+
 /* Calculation Trace Blocks */
 .trace-block {
     background: #f8f9fa;

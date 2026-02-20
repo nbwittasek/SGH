@@ -298,7 +298,8 @@ const Est = (() => {
             renderSensitivity(data);
             renderCalculationTraces(data);
 
-            // Show report buttons
+            // Show report buttons (top + bottom)
+            document.getElementById('est-report-top').style.display = '';
             document.getElementById('est-report-btns').style.display = '';
 
         } catch (e) {
@@ -318,6 +319,7 @@ const Est = (() => {
         document.getElementById('est-floor-tables').style.display = 'none';
         document.getElementById('est-exhaust-section').style.display = 'none';
         document.getElementById('est-sensitivity-section').style.display = 'none';
+        document.getElementById('est-report-top').style.display = 'none';
         document.getElementById('est-report-btns').style.display = 'none';
         const tracesDiv = document.getElementById('est-traces-section');
         if (tracesDiv) tracesDiv.style.display = 'none';
@@ -468,20 +470,18 @@ const Est = (() => {
     }
 
     // -----------------------------------------------------------------------
-    // Calculation Methodology (KaTeX-rendered LaTeX equations)
+    // Calculation Methodology (pure HTML equations — no KaTeX dependency)
     // -----------------------------------------------------------------------
 
-    /** Trigger KaTeX auto-render on a container element */
-    function renderKaTeX(el) {
-        if (typeof renderMathInElement === 'function') {
-            renderMathInElement(el, {
-                delimiters: [
-                    { left: '$$', right: '$$', display: true },
-                    { left: '\\(', right: '\\)', display: false },
-                ],
-                throwOnError: false,
-            });
-        }
+    /** Build an inline stacked fraction (pure HTML/CSS). */
+    function frac(num, den) {
+        return '<span class="eq-frac"><span class="eq-num">' + num +
+               '</span><span class="eq-den">' + den + '</span></span>';
+    }
+
+    /** Build a square-root with overline bar on the radicand. */
+    function sqrtH(inner) {
+        return '<span class="eq-sqrt">&radic;<span class="eq-rad">' + inner + '</span></span>';
     }
 
     function renderMethodology(data) {
@@ -511,9 +511,7 @@ const Est = (() => {
             correspond to those in the calculation engine and trace output.
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 1. DESIGN OBJECTIVE                                          -->
-        <!-- ============================================================ -->
+        <!-- 1. DESIGN OBJECTIVE -->
         <div class="meth-section">
             <h4 class="meth-section-title">1. Design Objective</h4>
             <p class="meth-prose">
@@ -531,35 +529,33 @@ const Est = (() => {
                 <thead><tr><th>Constraint</th><th>Symbol</th><th>Limit</th><th>Code Reference</th></tr></thead>
                 <tbody>
                     <tr><td>Minimum stairwell-to-corridor pressure (all doors closed)</td>
-                        <td>\\(\\Delta P_{\\min}\\)</td>
+                        <td>&Delta;P<sub>min</sub></td>
                         <td>${minDp} Pa (${minDpInwg} in.&nbsp;w.g.)</td>
                         <td>IBC 909.20.5.1</td></tr>
                     <tr><td>Maximum stairwell-to-corridor pressure (all doors closed)</td>
-                        <td>\\(\\Delta P_{\\max}\\)</td>
+                        <td>&Delta;P<sub>max</sub></td>
                         <td>${maxDp} Pa (${maxDpInwg} in.&nbsp;w.g.)</td>
                         <td>NFPA 92 &sect;4.4.2.1</td></tr>
                     <tr><td>Minimum air velocity through open doors (sprinklered)</td>
-                        <td>\\(V_{\\min}\\)</td>
+                        <td>V<sub>min</sub></td>
                         <td>${minVel} m/s</td>
                         <td>IBC 909.20.5.2</td></tr>
                     <tr><td>Maximum door-opening force</td>
-                        <td>\\(F_{\\max}\\)</td>
+                        <td>F<sub>max</sub></td>
                         <td>${maxForce} N (${maxForceLbf} lbf)</td>
                         <td>IBC 1010.1.3</td></tr>
                 </tbody>
             </table>
             <p class="meth-prose">
                 When fire-floor exhaust (depressurization) is provided, an additional pressure
-                differential of \\(\\Delta P_{\\mathrm{exhaust}}\\) = ${exhDp} Pa
+                differential of &Delta;P<sub>exhaust</sub> = ${exhDp} Pa
                 (${exhDpInwg} in.&nbsp;w.g.) is maintained across the fire floor per IBC 909.20.6.
                 The calculation determines both the <strong>minimum stairwell supply air</strong>
                 (for fan sizing) and the <strong>minimum fire-floor exhaust rate</strong>.
             </p>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 2. AIR PROPERTIES                                            -->
-        <!-- ============================================================ -->
+        <!-- 2. AIR PROPERTIES -->
         <div class="meth-section">
             <h4 class="meth-section-title">2. Air Properties</h4>
             <p class="meth-prose">
@@ -571,23 +567,21 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-01</span>
-                <div class="meth-eq-formula">$$\\rho = \\frac{P_{\\mathrm{atm}}}{R_{\\mathrm{air}} \\cdot T}$$</div>
+                <div class="meth-eq-formula">&rho; = ${frac('P<sub>atm</sub>', 'R<sub>air</sub> &middot; T')}</div>
                 <div class="meth-eq-where">
-                    where \\(R_{\\mathrm{air}} = 287.058\\;\\text{J/(kg\\cdot K)}\\) is the specific gas
-                    constant for dry air and \\(T\\) is the absolute temperature in Kelvin.
+                    where R<sub>air</sub> = 287.058 J/(kg&middot;K) is the specific gas
+                    constant for dry air and <em>T</em> is the absolute temperature in Kelvin.
                 </div>
             </div>
             <p class="meth-prose">
-                This equation is evaluated four times to obtain \\(\\rho_o\\) (outdoor),
-                \\(\\rho_i\\) (indoor), \\(\\rho_s\\) (stairwell), and \\(\\rho_f\\) (fire floor).
+                This equation is evaluated four times to obtain &rho;<sub>o</sub> (outdoor),
+                &rho;<sub>i</sub> (indoor), &rho;<sub>s</sub> (stairwell), and &rho;<sub>f</sub> (fire floor).
                 The stairwell temperature may be assumed equal to either the indoor or outdoor
                 temperature, depending on shaft insulation and exposure.
             </p>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 3. BUILDING LEAKAGE CHARACTERIZATION                         -->
-        <!-- ============================================================ -->
+        <!-- 3. BUILDING LEAKAGE CHARACTERIZATION -->
         <div class="meth-section">
             <h4 class="meth-section-title">3. Building Leakage Characterization</h4>
             <p class="meth-prose">
@@ -602,11 +596,11 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-02</span>
-                <div class="meth-eq-formula">$$A_{Ld} = g_d \\cdot \\bigl(2\\,w_d + 2\\,h_d - w_{\\mathrm{threshold}}\\bigr)$$</div>
+                <div class="meth-eq-formula">A<sub>Ld</sub> = g<sub>d</sub> &middot; (2 w<sub>d</sub> + 2 h<sub>d</sub> &minus; w<sub>threshold</sub>)</div>
                 <div class="meth-eq-where">
-                    where \\(g_d\\) is the uniform gap width around the door perimeter (m),
-                    \\(w_d\\) is the door width, and \\(h_d\\) is the door height.
-                    The threshold width \\(w_{\\mathrm{threshold}}\\) is subtracted because
+                    where g<sub>d</sub> is the uniform gap width around the door perimeter (m),
+                    w<sub>d</sub> is the door width, and h<sub>d</sub> is the door height.
+                    The threshold width w<sub>threshold</sub> is subtracted because
                     doors typically seal against the threshold.
                 </div>
             </div>
@@ -620,8 +614,8 @@ const Est = (() => {
                 <tbody>
                     <tr><td>Stair door</td><td>0.01</td><td>0.02</td><td>0.04</td><td>m&sup2; per door</td></tr>
                     <tr><td>Elevator door</td><td>0.02</td><td>0.06</td><td>0.11</td><td>m&sup2; per door</td></tr>
-                    <tr><td>Exterior wall</td><td>\\(0.5\\!\\times\\!10^{-4}\\)</td><td>\\(1.7\\!\\times\\!10^{-4}\\)</td><td>\\(5.0\\!\\times\\!10^{-4}\\)</td><td>m&sup2;/m&sup2; wall</td></tr>
-                    <tr><td>Floor/ceiling</td><td>\\(0.2\\!\\times\\!10^{-4}\\)</td><td>\\(0.8\\!\\times\\!10^{-4}\\)</td><td>\\(2.5\\!\\times\\!10^{-4}\\)</td><td>m&sup2;/m&sup2; floor</td></tr>
+                    <tr><td>Exterior wall</td><td>0.5&times;10<sup>&minus;4</sup></td><td>1.7&times;10<sup>&minus;4</sup></td><td>5.0&times;10<sup>&minus;4</sup></td><td>m&sup2;/m&sup2; wall</td></tr>
+                    <tr><td>Floor/ceiling</td><td>0.2&times;10<sup>&minus;4</sup></td><td>0.8&times;10<sup>&minus;4</sup></td><td>2.5&times;10<sup>&minus;4</sup></td><td>m&sup2;/m&sup2; floor</td></tr>
                 </tbody>
             </table>
             <p class="meth-prose">
@@ -630,7 +624,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-05</span>
-                <div class="meth-eq-formula">$$A_{\\mathrm{eff}} = A_1 + A_2 + \\cdots + A_n$$</div>
+                <div class="meth-eq-formula">A<sub>eff</sub> = A<sub>1</sub> + A<sub>2</sub> + &hellip; + A<sub>n</sub></div>
             </div>
             <p class="meth-prose">
                 Paths in series (e.g., a stair door in series with a corridor wall) combine with
@@ -638,13 +632,11 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-06</span>
-                <div class="meth-eq-formula">$$\\frac{1}{A_{\\mathrm{eff}}^{\\,2}} = \\frac{1}{A_1^{\\,2}} + \\frac{1}{A_2^{\\,2}} + \\cdots + \\frac{1}{A_n^{\\,2}}$$</div>
+                <div class="meth-eq-formula">${frac('1', 'A<sub>eff</sub><sup>2</sup>')} = ${frac('1', 'A<sub>1</sub><sup>2</sup>')} + ${frac('1', 'A<sub>2</sub><sup>2</sup>')} + &hellip; + ${frac('1', 'A<sub>n</sub><sup>2</sup>')}</div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 4. PRESSURE DISTRIBUTION                                     -->
-        <!-- ============================================================ -->
+        <!-- 4. PRESSURE DISTRIBUTION -->
         <div class="meth-section">
             <h4 class="meth-section-title">4. Pressure Distribution Across the Building Height</h4>
             <p class="meth-prose">
@@ -658,16 +650,16 @@ const Est = (() => {
             <p class="meth-prose">
                 <strong>Stack Effect.</strong>&ensp;When the outdoor temperature differs from the
                 stairwell temperature, a buoyancy-driven pressure gradient develops across the
-                building height. The stack-effect pressure at any height \\(h\\) relative to the
+                building height. The stack-effect pressure at any height <em>h</em> relative to the
                 neutral pressure plane (NPP) is:
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-07</span>
-                <div class="meth-eq-formula">$$\\Delta P_s(h) = 3460 \\left(\\frac{1}{T_o} - \\frac{1}{T_s}\\right) \\left(h - h_{\\mathrm{NPP}}\\right)$$</div>
+                <div class="meth-eq-formula">&Delta;P<sub>s</sub>(h) = 3460 &middot; (${frac('1', 'T<sub>o</sub>')} &minus; ${frac('1', 'T<sub>s</sub>')}) &middot; (h &minus; h<sub>NPP</sub>)</div>
                 <div class="meth-eq-where">
                     where the constant 3460 Pa&middot;K/m derives from
-                    \\(g \\cdot P_{\\mathrm{atm}} / R_{\\mathrm{air}}\\), and
-                    \\(h_{\\mathrm{NPP}}\\) is the neutral pressure plane height.
+                    g &middot; P<sub>atm</sub> / R<sub>air</sub>, and
+                    h<sub>NPP</sub> is the neutral pressure plane height.
                 </div>
             </div>
             <p class="meth-prose">
@@ -678,9 +670,9 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-08</span>
-                <div class="meth-eq-formula">$$\\sum \\dot{m}_{\\mathrm{in}} = \\sum \\dot{m}_{\\mathrm{out}}$$</div>
+                <div class="meth-eq-formula">&Sigma; ṁ<sub>in</sub> = &Sigma; ṁ<sub>out</sub></div>
                 <div class="meth-eq-where">
-                    The height \\(h_{\\mathrm{NPP}}\\) is adjusted by bisection until the net
+                    The height h<sub>NPP</sub> is adjusted by bisection until the net
                     mass flow through the building envelope equals zero.
                 </div>
             </div>
@@ -698,9 +690,9 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-09</span>
-                <div class="meth-eq-formula">$$\\Delta P_w = \\tfrac{1}{2}\\, C_p\\, \\rho_o\\, V_w^{\\,2}$$</div>
+                <div class="meth-eq-formula">&Delta;P<sub>w</sub> = ${frac('1', '2')} &middot; C<sub>p</sub> &middot; &rho;<sub>o</sub> &middot; V<sub>w</sub><sup>2</sup></div>
                 <div class="meth-eq-where">
-                    where \\(C_p\\) is the wind pressure coefficient:
+                    where C<sub>p</sub> is the wind pressure coefficient:
                     windward&nbsp;=&nbsp;+0.70, leeward&nbsp;=&nbsp;&minus;0.45,
                     side&nbsp;=&nbsp;&minus;0.60.
                 </div>
@@ -717,19 +709,17 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-15</span>
-                <div class="meth-eq-formula">$$\\Delta P_{\\mathrm{net}} = \\Delta P_{\\mathrm{mech}} + \\Delta P_{\\mathrm{stack}} + \\Delta P_{\\mathrm{wind}} - \\Delta P_{\\mathrm{exhaust}}$$</div>
+                <div class="meth-eq-formula">&Delta;P<sub>net</sub> = &Delta;P<sub>mech</sub> + &Delta;P<sub>stack</sub> + &Delta;P<sub>wind</sub> &minus; &Delta;P<sub>exhaust</sub></div>
                 <div class="meth-eq-where">
-                    \\(\\Delta P_{\\mathrm{exhaust}}\\) applies only on the fire floor.
+                    &Delta;P<sub>exhaust</sub> applies only on the fire floor.
                     The design must satisfy
-                    \\(\\Delta P_{\\min} \\le \\Delta P_{\\mathrm{net}} \\le \\Delta P_{\\max}\\)
+                    &Delta;P<sub>min</sub> &le; &Delta;P<sub>net</sub> &le; &Delta;P<sub>max</sub>
                     at every floor.
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 5. FLOW THROUGH OPENINGS                                     -->
-        <!-- ============================================================ -->
+        <!-- 5. FLOW THROUGH OPENINGS -->
         <div class="meth-section">
             <h4 class="meth-section-title">5. Airflow Through Closed and Open Doors</h4>
             <p class="meth-prose">
@@ -739,10 +729,10 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-03</span>
-                <div class="meth-eq-formula">$$Q = C_d \\cdot A \\sqrt{\\frac{2\\,|\\Delta P|}{\\rho}}$$</div>
+                <div class="meth-eq-formula">Q = C<sub>d</sub> &middot; A &middot; ${sqrtH(frac('2 |&Delta;P|', '&rho;'))}</div>
                 <div class="meth-eq-where">
-                    where \\(C_d = 0.65\\) is the discharge coefficient for building leakage
-                    paths, \\(A\\) is the effective leakage area, and \\(\\rho\\) is the air
+                    where C<sub>d</sub> = 0.65 is the discharge coefficient for building leakage
+                    paths, A is the effective leakage area, and &rho; is the air
                     density on the upstream side.
                 </div>
             </div>
@@ -759,18 +749,16 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-12</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{open}} = V_{\\min} \\cdot w_d \\cdot h_d$$</div>
+                <div class="meth-eq-formula">Q<sub>open</sub> = V<sub>min</sub> &middot; w<sub>d</sub> &middot; h<sub>d</sub></div>
                 <div class="meth-eq-where">
-                    where \\(V_{\\min}\\) = ${minVel} m/s for sprinklered buildings
+                    where V<sub>min</sub> = ${minVel} m/s for sprinklered buildings
                     (1.7 m/s if non-sprinklered). This flow rate per open door is added directly
                     to the supply requirement.
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 6. DOOR FORCE CONSTRAINT                                     -->
-        <!-- ============================================================ -->
+        <!-- 6. DOOR FORCE CONSTRAINT -->
         <div class="meth-section">
             <h4 class="meth-section-title">6. Door-Opening Force Constraint</h4>
             <p class="meth-prose">
@@ -781,11 +769,11 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-10b</span>
-                <div class="meth-eq-formula">$$F_{\\mathrm{total}} = F_{\\mathrm{closer}} + \\frac{\\Delta P \\cdot w_d \\cdot h_d}{2} \\cdot \\frac{w_d}{w_d - d}$$</div>
+                <div class="meth-eq-formula">F<sub>total</sub> = F<sub>closer</sub> + ${frac('&Delta;P &middot; w<sub>d</sub> &middot; h<sub>d</sub>', '2')} &middot; ${frac('w<sub>d</sub>', 'w<sub>d</sub> &minus; d')}</div>
                 <div class="meth-eq-where">
-                    where \\(d\\) is the handle-to-latch distance. The term
-                    \\(w_d / (w_d - d)\\) is the lever-arm ratio.
-                    This must satisfy \\(F_{\\mathrm{total}} \\le\\) ${maxForce} N (${maxForceLbf} lbf).
+                    where <em>d</em> is the handle-to-latch distance. The term
+                    w<sub>d</sub> / (w<sub>d</sub> &minus; d) is the lever-arm ratio.
+                    This must satisfy F<sub>total</sub> &le; ${maxForce} N (${maxForceLbf} lbf).
                 </div>
             </div>
             <p class="meth-prose">
@@ -795,7 +783,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-10b&prime;</span>
-                <div class="meth-eq-formula">$$\\Delta P_{\\mathrm{max,force}} = \\frac{2\\,(F_{\\max} - F_{\\mathrm{closer}})\\,(w_d - d)}{w_d^{\\,2} \\cdot h_d}$$</div>
+                <div class="meth-eq-formula">&Delta;P<sub>max,force</sub> = ${frac('2 (F<sub>max</sub> &minus; F<sub>closer</sub>) (w<sub>d</sub> &minus; d)', 'w<sub>d</sub><sup>2</sup> &middot; h<sub>d</sub>')}</div>
             </div>
             <p class="meth-prose">
                 If the required mechanical pressure exceeds this limit, the design must use
@@ -804,9 +792,7 @@ const Est = (() => {
             </p>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 7. STAIRWELL SUPPLY AIR                                      -->
-        <!-- ============================================================ -->
+        <!-- 7. STAIRWELL SUPPLY AIR -->
         <div class="meth-section">
             <h4 class="meth-section-title">7. Stairwell Supply Air Determination</h4>
             <p class="meth-prose">
@@ -816,7 +802,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-13</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{supply,closed}} = \\sum_{\\text{all floors}} Q_{\\mathrm{leak,doors}} + \\sum Q_{\\mathrm{leak,walls}}$$</div>
+                <div class="meth-eq-formula">Q<sub>supply,closed</sub> = &Sigma;<sub>all floors</sub> Q<sub>leak,doors</sub> + &Sigma; Q<sub>leak,walls</sub></div>
             </div>
             <p class="meth-prose">
                 In the <strong>doors-open</strong> scenario (design number of doors held open
@@ -825,7 +811,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-14</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{supply,open}} = \\sum_{\\text{closed floors}} Q_{\\mathrm{leak}} + n_{\\mathrm{open}} \\cdot Q_{\\mathrm{open}} + \\sum Q_{\\mathrm{leak,walls}}$$</div>
+                <div class="meth-eq-formula">Q<sub>supply,open</sub> = &Sigma;<sub>closed floors</sub> Q<sub>leak</sub> + n<sub>open</sub> &middot; Q<sub>open</sub> + &Sigma; Q<sub>leak,walls</sub></div>
             </div>
             <p class="meth-prose">
                 The <strong>design supply air rate</strong>&mdash;the primary output for fan
@@ -833,19 +819,17 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block highlight">
                 <span class="meth-eq-label">DESIGN</span>
-                <div class="meth-eq-formula">$$\\boxed{Q_{\\mathrm{design}} = \\max\\!\\left(Q_{\\mathrm{supply,closed}},\\; Q_{\\mathrm{supply,open}}\\right)}$$</div>
+                <div class="meth-eq-formula"><span class="meth-eq-boxed">Q<sub>design</sub> = max(Q<sub>supply,closed</sub>, Q<sub>supply,open</sub>)</span></div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 8. FIRE FLOOR EXHAUST                                        -->
-        <!-- ============================================================ -->
+        <!-- 8. FIRE FLOOR EXHAUST -->
         <div class="meth-section">
             <h4 class="meth-section-title">8. Fire Floor Exhaust (Depressurization)</h4>
             <p class="meth-prose">
                 The fire floor exhaust system must remove enough air to maintain the
                 fire-floor depressurization differential
-                (\\(\\Delta P_{\\mathrm{exhaust}}\\) = ${exhDp} Pa). The total exhaust rate
+                (&Delta;P<sub>exhaust</sub> = ${exhDp} Pa). The total exhaust rate
                 equals the sum of all airflows entering the fire floor from every source:
                 pressurized stairwells, elevator shafts, the building exterior, adjacent
                 floors above and below, and the thermal expansion of air due to the fire.
@@ -856,7 +840,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-19</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{stair}} = C_d \\cdot A_{Ld} \\cdot n_d \\cdot \\sqrt{\\frac{2\\,(\\Delta P_{\\mathrm{mech}} + \\Delta P_{\\mathrm{exhaust}})}{\\rho_s}}$$</div>
+                <div class="meth-eq-formula">Q<sub>stair</sub> = C<sub>d</sub> &middot; A<sub>Ld</sub> &middot; n<sub>d</sub> &middot; ${sqrtH(frac('2 (&Delta;P<sub>mech</sub> + &Delta;P<sub>exhaust</sub>)', '&rho;<sub>s</sub>'))}</div>
             </div>
             <p class="meth-prose">
                 <strong>Elevator shaft leakage</strong> enters through elevator doors, driven
@@ -864,7 +848,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-20</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{elev}} = C_d \\cdot A_{Le} \\cdot n_{\\mathrm{elev}} \\cdot \\sqrt{\\frac{2\\,\\Delta P_{\\mathrm{elev}}}{\\rho_i}}$$</div>
+                <div class="meth-eq-formula">Q<sub>elev</sub> = C<sub>d</sub> &middot; A<sub>Le</sub> &middot; n<sub>elev</sub> &middot; ${sqrtH(frac('2 &Delta;P<sub>elev</sub>', '&rho;<sub>i</sub>'))}</div>
             </div>
             <p class="meth-prose">
                 <strong>Exterior wall leakage</strong> is summed across all four building faces,
@@ -872,7 +856,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-21</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{ext}} = \\sum_{\\text{faces}} C_d \\cdot (A_{Lw} \\cdot P_{\\mathrm{face}} \\cdot h_f) \\cdot \\sqrt{\\frac{2\\,(\\Delta P_{\\mathrm{exhaust}} + \\Delta P_{\\mathrm{wind}})}{\\rho_o}}$$</div>
+                <div class="meth-eq-formula">Q<sub>ext</sub> = &Sigma;<sub>faces</sub> C<sub>d</sub> &middot; (A<sub>Lw</sub> &middot; P<sub>face</sub> &middot; h<sub>f</sub>) &middot; ${sqrtH(frac('2 (&Delta;P<sub>exhaust</sub> + &Delta;P<sub>wind</sub>)', '&rho;<sub>o</sub>'))}</div>
             </div>
             <p class="meth-prose">
                 <strong>Vertical leakage</strong> from the floors directly above and below the
@@ -880,7 +864,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-22</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{vert}} = 2\\,C_d \\cdot (A_{Lf} \\cdot A_{\\mathrm{floor}}) \\cdot \\sqrt{\\frac{2\\,\\Delta P_{\\mathrm{exhaust}}}{\\rho_i}}$$</div>
+                <div class="meth-eq-formula">Q<sub>vert</sub> = 2 C<sub>d</sub> &middot; (A<sub>Lf</sub> &middot; A<sub>floor</sub>) &middot; ${sqrtH(frac('2 &Delta;P<sub>exhaust</sub>', '&rho;<sub>i</sub>'))}</div>
                 <div class="meth-eq-where">
                     The factor of 2 accounts for leakage from both the floor above and below.
                 </div>
@@ -891,10 +875,10 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-24</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{fire}} = \\frac{\\dot{H}}{\\rho_i \\cdot c_p \\cdot (T_f - T_i)}$$</div>
+                <div class="meth-eq-formula">Q<sub>fire</sub> = ${frac('&#7714;', '&rho;<sub>i</sub> &middot; c<sub>p</sub> &middot; (T<sub>f</sub> &minus; T<sub>i</sub>)')}</div>
                 <div class="meth-eq-where">
-                    where \\(\\dot{H}\\) is the design fire heat release rate (W) and
-                    \\(c_p = 1005\\;\\text{J/(kg\\cdot K)}\\).
+                    where &#7714; is the design fire heat release rate (W) and
+                    c<sub>p</sub> = 1005 J/(kg&middot;K).
                 </div>
             </div>
             <p class="meth-prose">
@@ -903,7 +887,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-23</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{expansion}} = Q_{\\mathrm{fire}} \\cdot \\left(\\frac{T_f}{T_i} - 1\\right)$$</div>
+                <div class="meth-eq-formula">Q<sub>expansion</sub> = Q<sub>fire</sub> &middot; (${frac('T<sub>f</sub>', 'T<sub>i</sub>')} &minus; 1)</div>
             </div>
             <p class="meth-prose">
                 The <strong>total required exhaust</strong> at fire-floor temperature is the
@@ -911,7 +895,7 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block highlight">
                 <span class="meth-eq-label">EQ-25</span>
-                <div class="meth-eq-formula">$$\\boxed{Q_{\\mathrm{exhaust}} = Q_{\\mathrm{stair}} + Q_{\\mathrm{elev}} + Q_{\\mathrm{ext}} + Q_{\\mathrm{vert}} + Q_{\\mathrm{expansion}}}$$</div>
+                <div class="meth-eq-formula"><span class="meth-eq-boxed">Q<sub>exhaust</sub> = Q<sub>stair</sub> + Q<sub>elev</sub> + Q<sub>ext</sub> + Q<sub>vert</sub> + Q<sub>expansion</sub></span></div>
             </div>
             <p class="meth-prose">
                 Because exhaust fans are typically rated at standard conditions (20&deg;C), the
@@ -919,17 +903,15 @@ const Est = (() => {
             </p>
             <div class="meth-eq-block">
                 <span class="meth-eq-label">EQ-26</span>
-                <div class="meth-eq-formula">$$Q_{\\mathrm{std}} = Q_{\\mathrm{exhaust}} \\cdot \\frac{T_f}{T_{\\mathrm{std}}}$$</div>
+                <div class="meth-eq-formula">Q<sub>std</sub> = Q<sub>exhaust</sub> &middot; ${frac('T<sub>f</sub>', 'T<sub>std</sub>')}</div>
                 <div class="meth-eq-where">
-                    where \\(T_{\\mathrm{std}} = 293.15\\;\\text{K}\\) (20&deg;C). This corrected
+                    where T<sub>std</sub> = 293.15 K (20&deg;C). This corrected
                     value is the basis for exhaust fan selection.
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- 9. SOLUTION PROCEDURE                                        -->
-        <!-- ============================================================ -->
+        <!-- 9. SOLUTION PROCEDURE -->
         <div class="meth-section">
             <h4 class="meth-section-title">9. Iterative Solution and Sensitivity Analysis</h4>
             <p class="meth-prose">
@@ -959,7 +941,6 @@ const Est = (() => {
         const content = document.getElementById('est-methodology-content');
         content.innerHTML = html;
         content.style.display = '';  // reset in case previously collapsed
-        try { renderKaTeX(content); } catch (e) { console.warn('KaTeX render:', e); }
     }
 
     let methodologyCollapsed = false;
