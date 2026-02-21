@@ -7,7 +7,6 @@ import html as html_module
 from pathlib import Path
 from typing import List, Optional
 
-from .units import pa_to_inwc
 
 
 def _esc(text) -> str:

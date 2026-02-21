@@ -205,7 +205,7 @@ const App = (() => {
         const search = document.getElementById('zone-search').value.toLowerCase();
         let filtered = allZones;
         if (level) filtered = filtered.filter(z => z.level_num == level);
-        if (search) filtered = filtered.filter(z => z.name.toLowerCase().includes(search) || z.display_name.toLowerCase().includes(search));
+        if (search) filtered = filtered.filter(z => z.name.toLowerCase().includes(search) || (z.display_name || '').toLowerCase().includes(search));
         renderZonesTable(filtered);
     }
 
@@ -1269,7 +1269,7 @@ const App = (() => {
                 <td><input type="number" id="roof-icon-${i}" value="129" min="0"></td>
                 <td><input type="number" id="roof-col-${i}" value="1" min="0"></td>
                 <td><input type="number" id="roof-row-${i}" value="1" min="0"></td>
-                <td><button class="btn btn-sm" onclick="App.autoPopulateRoof(${i})" ${isPressurized ? '' : 'disabled'}>Auto-Populate</button></td>
+                <td><button class="btn btn-sm" onclick="App.autoPopulateRoofSingle(${i})" ${isPressurized ? '' : 'disabled'}>Auto-Populate</button></td>
             </tr>`;
 
             // Apply auto-selections for roof
@@ -1299,7 +1299,7 @@ const App = (() => {
         }
     }
 
-    async function autoPopulateRoof(roofIdx) {
+    async function autoPopulateRoofSingle(roofIdx) {
         const label = document.getElementById(`stair-label-${roofIdx}`)?.value || `Stair_${roofIdx + 1}`;
         const nameLower = label.toLowerCase();
 
@@ -1925,16 +1925,23 @@ const App = (() => {
     }
 
     function updateRunSummary() {
-        // Count fire floors (corridor levels with non-zero flow)
-        const numCorr = parseInt(document.getElementById('num-corridors')?.value) || 1;
-        let fireFloors = 0;
+        // Count fire floors (corridor AND floor zone levels with non-zero flow)
+        const numCorr = parseInt(document.getElementById('num-corridors')?.value) || 0;
+        const numFloors = parseInt(document.getElementById('num-floors')?.value) || 0;
+        const fireFloorSet = new Set();
         modelData.levels.forEach(lvl => {
+            // Check corridors
             for (let c = 0; c < numCorr; c++) {
                 const flowEl = document.getElementById(`corr-${c}-flow-${lvl.index}`);
-                if (flowEl && parseFloat(flowEl.value) > 0) { fireFloors++; break; }
+                if (flowEl && parseFloat(flowEl.value) > 0) { fireFloorSet.add(lvl.index); break; }
+            }
+            // Check floor zones
+            for (let f = 0; f < numFloors; f++) {
+                const flowEl = document.getElementById(`floor-${f}-flow-${lvl.index}`);
+                if (flowEl && parseFloat(flowEl.value) > 0) { fireFloorSet.add(lvl.index); break; }
             }
         });
-        const total = scenarios.length * Math.max(fireFloors, 1);
+        const total = scenarios.length * Math.max(fireFloorSet.size, 1);
         document.getElementById('total-runs').textContent = total;
     }
 
@@ -2573,7 +2580,7 @@ const App = (() => {
             }).join('');
 
             if (items.length === 0) {
-                list.innerHTML = '<div style="padding:1rem;color:var(--text-muted);">Empty folder</div>';
+                list.innerHTML = '<div style="padding:1rem;color:var(--text-secondary);">Empty folder</div>';
             }
         } catch (e) {
             document.getElementById('browser-list').innerHTML = `<div style="padding:1rem;color:var(--danger);">${e.message}</div>`;
@@ -2845,6 +2852,7 @@ const App = (() => {
         parseFloorRange,
         applyBulkRoofExhaust,
         autoPopulateRoof,
+        autoPopulateRoofSingle,
         checkAllFiles,
         addStairCriteriaGroup,
         removeStairCriteriaGroup,
@@ -2857,7 +2865,6 @@ const App = (() => {
         loadTab3Config,
         updatePrjFile,
         addScenario: () => addScenario(`Scenario_${scenarios.length + 1}`, '', 70, 0, 270),
-        addScenario,
         addStandardSet,
         removeSelectedScenario,
         updateScenario,

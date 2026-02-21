@@ -10,10 +10,11 @@ Key fixes v3:
 - Icon placement collision detection with warnings
 """
 
+import re
 from typing import List, Tuple
 import logging
 
-from .prj_parser import AHSystem, check_keywords
+from .prj_parser import check_keywords
 from .units import f_to_kelvin, mph_to_ms, scfm_to_kgs
 
 logger = logging.getLogger(__name__)
@@ -60,10 +61,9 @@ def _get_path_count(lines, count_line):
     return int(parts[0]) if parts and parts[0].isdigit() else 0
 
 def _set_path_count(lines, count_line, new_count):
-    old = lines[count_line]
-    parts = old.strip().split()
-    if parts and parts[0].isdigit():
-        lines[count_line] = old.replace(parts[0], str(new_count), 1)
+    """Replace the leading integer on a count line with new_count."""
+    lines[count_line] = re.sub(r'^\s*\d+', f'{new_count:>5}',
+                                lines[count_line], count=1)
 
 def _find_ahs_section(lines):
     count_line = -1
@@ -184,8 +184,8 @@ def ensure_tool_flow_element(lines):
 
     # Update count
     old_count = int(lines[cl].strip().split()[0])
-    old_line = lines[cl]
-    lines[cl] = old_line.replace(str(old_count), str(old_count + 1), 1)
+    lines[cl] = re.sub(r'^\s*\d+', f'{old_count + 1:>5}',
+                        lines[cl], count=1)
 
     logger.info("Created flow element %d (%s)", new_id, TOOL_ELEMENT_NAME)
     return new_id
@@ -296,11 +296,17 @@ def _format_icon_line(icon_type, col, row, ref):
     return f"  {icon_type}  {col}  {row}  {ref}\n"
 
 def _increment_icon_count(lines, level_def_line):
+    """Increment the 4th field (icon count) on a level definition line."""
     parts = lines[level_def_line].split()
     if len(parts) >= 4:
         old = int(parts[3])
-        lines[level_def_line] = lines[level_def_line].replace(
-            f" {old} ", f" {old + 1} ", 1
+        # Replace only the 4th whitespace-separated field
+        # Pattern: match first 3 fields then capture the 4th integer
+        lines[level_def_line] = re.sub(
+            r'^(\s*\S+\s+\S+\s+\S+\s+)(\d+)',
+            lambda m: m.group(1) + str(old + 1),
+            lines[level_def_line],
+            count=1,
         )
 
 # ---------------------------------------------------------------------------
@@ -509,7 +515,8 @@ def ensure_ahs_systems(lines, field_count=30, flow_elem=1):
         lines.insert(zt2 + i, zl)
     zcl2, _, _ = _find_zone_section(lines)
     old_zc = int(lines[zcl2].strip().split()[0])
-    lines[zcl2] = lines[zcl2].replace(str(old_zc), str(old_zc + 4), 1)
+    lines[zcl2] = re.sub(r'^\s*\d+', f'{old_zc + 4:>5}',
+                          lines[zcl2], count=1)
 
     # 2. Add 6 AHS internal paths
     # IMPORTANT: Infrastructure paths must have ahs_id=0.
@@ -548,7 +555,8 @@ def ensure_ahs_systems(lines, field_count=30, flow_elem=1):
     for i, al in enumerate(ahs_defs):
         lines.insert(atl2 + i, al)
     acl3, _ = _find_ahs_section(lines)
-    lines[acl3] = lines[acl3].replace("0 !", "2 !", 1)
+    lines[acl3] = re.sub(r'^\s*\d+', '    2',
+                          lines[acl3], count=1)
 
     logger.info(
         "Created AHS: SUPPLY(id=%d,z=%d/%d,p=%d/%d/%d) "
@@ -741,7 +749,7 @@ def re_extract_level_positions(lines):
 def build_modified_prj(
     base_lines, temp_f, wind_mph, wind_dir,
     stair_configs, corridor_configs, roof_configs,
-    fire_floor_level_num, ahs_systems,
+    fire_floor_level_num, ahs_systems=None,
 ):
     """Build a complete modified PRJ file for one analysis run.
     Returns (modified_lines, warnings_list).

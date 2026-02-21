@@ -342,11 +342,16 @@ class AnalysisEngine:
                     }
                 stair_path_indices[stair.label] = paths_info
 
-            # Find corridor path indices
+            # Find corridor AND floor zone path indices
             corridor_path_indices = {}
             for corr in self.config.corridors:
                 matching = find_paths_by_element_name(model, corr.path_name)
                 corridor_path_indices[corr.label] = {
+                    p.level_num: p.id for p in matching
+                }
+            for fz in self.config.floor_zones:
+                matching = find_paths_by_element_name(model, fz.path_name)
+                corridor_path_indices[fz.label] = {
                     p.level_num: p.id for p in matching
                 }
 
@@ -454,8 +459,10 @@ class AnalysisEngine:
                 # Parse xlog results
                 xlog_path = run_result["xlog_path"]
                 try:
-                    # Extract corridor pressure diffs
-                    for corr in self.config.corridors:
+                    # Extract corridor/floor zone pressure diffs
+                    # Iterate all depressurization configs and keep max |dP|
+                    all_depress = list(self.config.corridors) + list(self.config.floor_zones)
+                    for corr in all_depress:
                         corr_paths = corridor_path_indices.get(corr.label, {})
                         # Floor below the fire floor
                         below_level = ff_level - 1
@@ -463,14 +470,18 @@ class AnalysisEngine:
                             dp = extract_pressure_diffs(
                                 xlog_path, [corr_paths[below_level]]
                             )
-                            result.corridor_dp_below[ff_idx] = dp[0]
+                            val = abs(dp[0])
+                            if val > abs(result.corridor_dp_below[ff_idx]):
+                                result.corridor_dp_below[ff_idx] = dp[0]
                         # Floor above the fire floor
                         above_level = ff_level + 1
                         if above_level in corr_paths:
                             dp = extract_pressure_diffs(
                                 xlog_path, [corr_paths[above_level]]
                             )
-                            result.corridor_dp_above[ff_idx] = dp[0]
+                            val = abs(dp[0])
+                            if val > abs(result.corridor_dp_above[ff_idx]):
+                                result.corridor_dp_above[ff_idx] = dp[0]
 
                     # Extract stair pressure diffs
                     for stair in self.config.stairs:
@@ -539,7 +550,13 @@ class AnalysisEngine:
         for s in stairs:
             columns.append(f"{s}_S2V")
         for s in stairs:
+            if s in result.stair_dp2:
+                columns.append(f"{s}_S2V2")
+        for s in stairs:
             columns.append(f"{s}_V2C")
+        for s in stairs:
+            if s in result.vest_dp2:
+                columns.append(f"{s}_V2C2")
         for s in stairs:
             columns.append(f"{s}_EXT")
 
@@ -573,6 +590,14 @@ class AnalysisEngine:
                     row.append(pa_to_inwc(max_dp))
                 else:
                     row.append(0.0)
+            # Stair S2V2 (secondary)
+            for s in stairs:
+                if s in result.stair_dp2:
+                    if lvl_idx < result.stair_dp2[s].shape[0]:
+                        max_dp = float(np.max(np.abs(result.stair_dp2[s][lvl_idx, :])))
+                        row.append(pa_to_inwc(max_dp))
+                    else:
+                        row.append(0.0)
 
             # Stair V2C
             for s in stairs:
@@ -581,6 +606,14 @@ class AnalysisEngine:
                     row.append(pa_to_inwc(max_dp))
                 else:
                     row.append(0.0)
+            # Stair V2C2 (secondary)
+            for s in stairs:
+                if s in result.vest_dp2:
+                    if lvl_idx < result.vest_dp2[s].shape[0]:
+                        max_dp = float(np.max(np.abs(result.vest_dp2[s][lvl_idx, :])))
+                        row.append(pa_to_inwc(max_dp))
+                    else:
+                        row.append(0.0)
 
             # Stair EXT
             for s in stairs:
@@ -624,7 +657,7 @@ class AnalysisEngine:
         for result in self.results:
             if result.output_table is None:
                 continue
-            df = result.output_table
+            df = result.output_table.replace({np.nan: None})
             summary = {
                 "scenario": result.scenario_name,
                 "levels": df["Level"].tolist(),
@@ -689,7 +722,13 @@ class AnalysisEngine:
             for s in stairs:
                 columns.append(f"{s}_S2V")
             for s in stairs:
+                if s in result.stair_dp2:
+                    columns.append(f"{s}_S2V2")
+            for s in stairs:
                 columns.append(f"{s}_V2C")
+            for s in stairs:
+                if s in result.vest_dp2:
+                    columns.append(f"{s}_V2C2")
             for s in stairs:
                 columns.append(f"{s}_EXT")
 
@@ -715,10 +754,22 @@ class AnalysisEngine:
                     else:
                         row.append(0.0)
                 for s in stairs:
+                    if s in result.stair_dp2:
+                        if lvl_idx < result.stair_dp2[s].shape[0]:
+                            row.append(pa_to_inwc(float(abs(result.stair_dp2[s][lvl_idx, ff_idx]))))
+                        else:
+                            row.append(0.0)
+                for s in stairs:
                     if s in result.vest_dp and lvl_idx < result.vest_dp[s].shape[0]:
                         row.append(pa_to_inwc(float(abs(result.vest_dp[s][lvl_idx, ff_idx]))))
                     else:
                         row.append(0.0)
+                for s in stairs:
+                    if s in result.vest_dp2:
+                        if lvl_idx < result.vest_dp2[s].shape[0]:
+                            row.append(pa_to_inwc(float(abs(result.vest_dp2[s][lvl_idx, ff_idx]))))
+                        else:
+                            row.append(0.0)
                 for s in stairs:
                     if s in result.ext_dp and lvl_idx < result.ext_dp[s].shape[0]:
                         row.append(pa_to_inwc(float(abs(result.ext_dp[s][lvl_idx, ff_idx]))))
@@ -729,14 +780,24 @@ class AnalysisEngine:
             tables[ff_name] = {"columns": columns, "data": rows}
 
         # Build worst-case analysis: for each level + column, which fire floor is worst
+        # Use the columns from the first table (includes S2V2/V2C2 if present)
         worst_case = {}
-        columns = ["dP_Corridor_Below", "dP_Corridor_Above"]
-        for s in stairs:
-            columns.append(f"{s}_S2V")
-        for s in stairs:
-            columns.append(f"{s}_V2C")
-        for s in stairs:
-            columns.append(f"{s}_EXT")
+        if fire_floor_names and fire_floor_names[0] in tables:
+            columns = [c for c in tables[fire_floor_names[0]]["columns"] if c != "Level"]
+        else:
+            columns = ["dP_Corridor_Below", "dP_Corridor_Above"]
+            for s in stairs:
+                columns.append(f"{s}_S2V")
+            for s in stairs:
+                if s in result.stair_dp2:
+                    columns.append(f"{s}_S2V2")
+            for s in stairs:
+                columns.append(f"{s}_V2C")
+            for s in stairs:
+                if s in result.vest_dp2:
+                    columns.append(f"{s}_V2C2")
+            for s in stairs:
+                columns.append(f"{s}_EXT")
 
         for lvl_idx, lvl_name in enumerate(levels):
             worst_case[lvl_name] = {}

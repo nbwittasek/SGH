@@ -66,8 +66,11 @@ analysis_running = False
 
 def _load_app_config() -> Dict[str, Any]:
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "r") as f:
-            return json.load(f)
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning("Failed to load config.json, using defaults: %s", e)
     return {"contam_executable_default": "", "recent_projects": []}
 
 
@@ -687,12 +690,13 @@ async def start_analysis(request: Request):
                            "levels are configured (corridor or floor zone depressurization "
                            "zones must be selected with non-zero flow rates).")
 
-    analysis_running = True
-
     def on_progress(info):
         analysis_log.append(info["message"])
 
     analysis_engine.on_progress(on_progress)
+
+    # Set flag only after all validation has passed, right before launching task
+    analysis_running = True
 
     # Run in background task
     loop = asyncio.get_running_loop()
@@ -784,6 +788,7 @@ async def export_summary_csv():
     import pandas as pd
     combined = pd.concat(all_dfs, ignore_index=True)
     folder = Path(analysis_engine.config.project_folder) / "analysis"
+    folder.mkdir(parents=True, exist_ok=True)
     filepath = folder / "Summary_All_Scenarios.csv"
     combined.to_csv(filepath, index=False, float_format="%.4f")
 
@@ -1281,10 +1286,14 @@ async def update_prj_file(request: Request):
         # Get first fire floor level
         ff_level = 1
         for cfg in all_depress:
+            found = False
             for le in cfg["levels"]:
                 if le.get("flow_rate", 0) > 0 and le.get("zone_id", 0) != 0:
                     ff_level = le["level_num"]
+                    found = True
                     break
+            if found:
+                break
         
         modified, warnings = build_modified_prj(
             base_lines=model.raw_lines,
