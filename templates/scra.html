@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCRA Generator — Smoke Control Rational Analysis</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #f0f2f5; color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a3a6b, #2e5ea6);
+            color: #fff; padding: 16px 30px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .header h1 { font-size: 18pt; font-weight: 600; }
+        .header .subtitle { font-size: 10pt; opacity: 0.8; }
+        .header .nav-links a {
+            color: #fff; text-decoration: none; margin-left: 20px;
+            font-size: 10pt; opacity: 0.8;
+        }
+        .header .nav-links a:hover { opacity: 1; }
+        .container { max-width: 1100px; margin: 20px auto; padding: 0 20px; }
+
+        /* Steps / Wizard */
+        .steps { display: flex; gap: 4px; margin-bottom: 20px; }
+        .step {
+            flex: 1; text-align: center; padding: 10px;
+            background: #ddd; color: #888; border-radius: 6px;
+            font-size: 9pt; font-weight: 600; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .step.active { background: #1a3a6b; color: #fff; }
+        .step.done { background: #27ae60; color: #fff; }
+        .step:hover { opacity: 0.9; }
+
+        /* Panels */
+        .panel {
+            background: #fff; border-radius: 8px; padding: 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px;
+            display: none;
+        }
+        .panel.active { display: block; }
+        .panel h2 { font-size: 14pt; color: #1a3a6b; margin-bottom: 12px;
+                     border-bottom: 2px solid #e8ecf0; padding-bottom: 6px; }
+        .panel h3 { font-size: 11pt; color: #555; margin: 16px 0 8px; }
+
+        /* Form elements */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
+        .form-grid.three-col { grid-template-columns: 1fr 1fr 1fr; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block; font-size: 9pt; font-weight: 600;
+            color: #666; margin-bottom: 3px;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 10pt;
+        }
+        .form-group textarea { height: 60px; resize: vertical; }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #1a3a6b; outline: none;
+            box-shadow: 0 0 0 2px rgba(26,58,107,0.15);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 24px; border: none; border-radius: 4px;
+            font-size: 10pt; font-weight: 600; cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary { background: #1a3a6b; color: #fff; }
+        .btn-primary:hover { background: #143058; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn-success:hover { background: #1e8449; }
+        .btn-secondary { background: #95a5a6; color: #fff; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .btn-danger { background: #e74c3c; color: #fff; }
+        .btn-group { display: flex; gap: 10px; margin-top: 16px; }
+
+        /* File upload */
+        .file-upload {
+            border: 2px dashed #ccc; border-radius: 8px; padding: 30px;
+            text-align: center; cursor: pointer; transition: border-color 0.2s;
+        }
+        .file-upload:hover { border-color: #1a3a6b; }
+        .file-upload.has-file { border-color: #27ae60; background: #f0fff4; }
+        .file-upload input[type="file"] { display: none; }
+        .file-info { font-size: 9pt; color: #27ae60; margin-top: 6px; font-weight: 600; }
+
+        /* Stair table */
+        .stair-table { width: 100%; border-collapse: collapse; font-size: 9pt; margin: 10px 0; }
+        .stair-table th { background: #1a3a6b; color: #fff; padding: 6px 8px; text-align: center; }
+        .stair-table td { padding: 4px 8px; border-bottom: 1px solid #eee; }
+        .stair-table input { width: 80px; padding: 4px; font-size: 9pt; text-align: center; }
+        .stair-table .remove-btn {
+            background: #e74c3c; color: #fff; border: none; border-radius: 3px;
+            padding: 2px 8px; cursor: pointer; font-size: 8pt;
+        }
+
+        /* Progress */
+        .progress-bar { height: 6px; background: #eee; border-radius: 3px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { height: 100%; background: #1a3a6b; transition: width 0.3s; }
+
+        /* Status */
+        .status-msg {
+            padding: 10px 14px; border-radius: 4px; font-size: 9pt;
+            margin: 10px 0; display: none;
+        }
+        .status-msg.info { display: block; background: #e8f4fd; color: #1a3a6b; border: 1px solid #b8d4e8; }
+        .status-msg.success { display: block; background: #e8f8e8; color: #1e8449; border: 1px solid #a8d8a8; }
+        .status-msg.error { display: block; background: #fde8e8; color: #c0392b; border: 1px solid #e8a8a8; }
+
+        /* Report preview */
+        .report-frame { width: 100%; height: 700px; border: 1px solid #ddd; border-radius: 4px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .form-grid.three-col { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>SCRA Generator</h1>
+            <div class="subtitle">Smoke Control Rational Analysis</div>
+        </div>
+        <div class="nav-links">
+            <a href="/">CONTAM Tool</a>
+            <a href="/estimation">Estimation Tool</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Step Indicators -->
+        <div class="steps">
+            <div class="step active" data-step="1" onclick="goToStep(1)">1. Project Info</div>
+            <div class="step" data-step="2" onclick="goToStep(2)">2. Building</div>
+            <div class="step" data-step="3" onclick="goToStep(3)">3. PRJ File</div>
+            <div class="step" data-step="4" onclick="goToStep(4)">4. Stairs &amp; Zones</div>
+            <div class="step" data-step="5" onclick="goToStep(5)">5. Generate</div>
+        </div>
+
+        <div id="status" class="status-msg"></div>
+
+        <!-- Step 1: Project Info -->
+        <div class="panel active" id="panel-1">
+            <h2>Project Information</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Project Name</label>
+                    <input type="text" id="project_name" placeholder="e.g. Creative Artists Agency Tenant Space">
+                </div>
+                <div class="form-group">
+                    <label>Project Number</label>
+                    <input type="text" id="project_number" placeholder="e.g. 231440">
+                </div>
+                <div class="form-group">
+                    <label>Project Address</label>
+                    <input type="text" id="project_address" placeholder="e.g. 1950 Avenue of the Stars">
+                </div>
+                <div class="form-group">
+                    <label>City</label>
+                    <input type="text" id="project_city" value="Los Angeles">
+                </div>
+                <div class="form-group">
+                    <label>State</label>
+                    <input type="text" id="project_state" value="California">
+                </div>
+                <div class="form-group">
+                    <label>Submittal Type</label>
+                    <select id="submittal_type">
+                        <option>First Submittal</option>
+                        <option>Revision 1</option>
+                        <option>Revision 2</option>
+                        <option>Final</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Report Date</label>
+                    <input type="text" id="report_date" placeholder="e.g. 18 February 2026">
+                </div>
+                <div class="form-group">
+                    <label>Code Jurisdiction</label>
+                    <select id="code_jurisdiction">
+                        <option value="LABC">Los Angeles Building Code (LABC)</option>
+                        <option value="CBC">California Building Code (CBC)</option>
+                        <option value="IBC">International Building Code (IBC)</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3>Prepared For</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Client Name</label>
+                    <input type="text" id="client_name" placeholder="e.g. Pacific Edge Projects">
+                </div>
+                <div class="form-group">
+                    <label>Client Address</label>
+                    <input type="text" id="client_address">
+                </div>
+            </div>
+
+            <h3>Prepared By</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Firm Name</label>
+                    <input type="text" id="firm_name" value="Simpson Gumpertz & Heger Inc.">
+                </div>
+                <div class="form-group">
+                    <label>Firm Address</label>
+                    <input type="text" id="firm_address">
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="text" id="firm_phone">
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="goToStep(2)">Next: Building Description &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Building Description -->
+        <div class="panel" id="panel-2">
+            <h2>Building Description</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Building Name</label>
+                    <input type="text" id="building_name" placeholder="e.g. Culver City Center">
+                </div>
+                <div class="form-group">
+                    <label>Building Abbreviation</label>
+                    <input type="text" id="building_abbr" placeholder="e.g. CCC">
+                </div>
+                <div class="form-group">
+                    <label>Total Stories (above grade)</label>
+                    <input type="number" id="total_stories" value="37">
+                </div>
+                <div class="form-group">
+                    <label>Above-Grade Parking Levels</label>
+                    <input type="number" id="above_grade_parking" value="2">
+                </div>
+                <div class="form-group">
+                    <label>Subterranean Levels</label>
+                    <input type="number" id="subterranean_levels" value="4">
+                </div>
+                <div class="form-group">
+                    <label>Building Type</label>
+                    <input type="text" id="building_type" value="high-rise office tower">
+                </div>
+                <div class="form-group">
+                    <label>Sprinklered?</label>
+                    <select id="is_sprinklered">
+                        <option value="true" selected>Yes</option>
+                        <option value="false">No</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3>Scope of Work</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Tenant Name</label>
+                    <input type="text" id="tenant_name" placeholder="e.g. CAA">
+                </div>
+                <div class="form-group">
+                    <label>Scope Bottom Level</label>
+                    <input type="number" id="scope_bottom" value="4">
+                </div>
+                <div class="form-group">
+                    <label>Scope Top Level</label>
+                    <input type="number" id="scope_top" value="21">
+                </div>
+            </div>
+
+            <h3>Climate Data</h3>
+            <div class="form-grid three-col">
+                <div class="form-group">
+                    <label>Winter Design DB (&deg;F)</label>
+                    <input type="number" id="winter_db" value="44.4" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Summer Design DB (&deg;F)</label>
+                    <input type="number" id="summer_db" value="83.7" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Indoor Design Temp (&deg;F)</label>
+                    <input type="number" id="indoor_temp" value="68" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label>Weather Station</label>
+                    <input type="text" id="weather_station" placeholder="e.g. Santa Monica Municipal Airport">
+                </div>
+            </div>
+
+            <h3>Base Building SCRA Reference (optional)</h3>
+            <div class="form-grid three-col">
+                <div class="form-group">
+                    <label>Author</label>
+                    <input type="text" id="base_scra_author" placeholder="e.g. CCI">
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="text" id="base_scra_date" placeholder="e.g. 23 March 2020">
+                </div>
+                <div class="form-group">
+                    <label>Revision</label>
+                    <input type="text" id="base_scra_revision" placeholder="e.g. Rev Bulletin #2.2">
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="goToStep(1)">&larr; Back</button>
+                <button class="btn btn-primary" onclick="goToStep(3)">Next: PRJ File &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 3: PRJ File Upload -->
+        <div class="panel" id="panel-3">
+            <h2>CONTAM Model (.prj File)</h2>
+            <p style="font-size:9pt;color:#666;margin-bottom:14px;">
+                Upload a CONTAM .prj file to auto-extract building geometry, stairwells,
+                and floor heights. The model data will be used for the SCRA calculations.
+            </p>
+
+            <div class="file-upload" id="prj-dropzone" onclick="document.getElementById('prj-file').click()">
+                <div style="font-size:24pt;color:#ccc;">&#128193;</div>
+                <div style="font-size:10pt;color:#888;margin-top:8px;">
+                    Click to select or drag &amp; drop a .prj file
+                </div>
+                <div class="file-info" id="prj-file-info"></div>
+                <input type="file" id="prj-file" accept=".prj" onchange="handlePrjUpload(this)">
+            </div>
+
+            <div id="prj-summary" style="display:none;margin-top:16px;">
+                <h3>Extracted Building Data</h3>
+                <div id="prj-data"></div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="goToStep(2)">&larr; Back</button>
+                <button class="btn btn-primary" onclick="goToStep(4)">Next: Stairs &amp; Zones &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Stairs & Smoke Zones -->
+        <div class="panel" id="panel-4">
+            <h2>Stairwell Definitions</h2>
+            <p style="font-size:9pt;color:#666;margin-bottom:10px;">
+                Define the pressurized stairs. If a PRJ file was loaded, stairs are auto-detected.
+            </p>
+
+            <table class="stair-table" id="stairs-table">
+                <thead>
+                    <tr>
+                        <th>Label</th>
+                        <th>Bottom Level</th>
+                        <th>Top Level</th>
+                        <th>Door W (m)</th>
+                        <th>Door H (m)</th>
+                        <th>Gap (mm)</th>
+                        <th>Vestibule?</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="stairs-body"></tbody>
+            </table>
+            <button class="btn btn-secondary" onclick="addStair()" style="margin-top:6px;">+ Add Stair</button>
+
+            <h3 style="margin-top:20px;">Design Criteria</h3>
+            <div class="form-grid three-col">
+                <div class="form-group">
+                    <label>Min &Delta;P (in. w.g.)</label>
+                    <input type="number" id="min_dp" value="0.05" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Max Door Force &mdash; Stair (lbf)</label>
+                    <input type="number" id="max_force_stair" value="30" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Max Door Force &mdash; Egress (lbf)</label>
+                    <input type="number" id="max_force_egress" value="15" step="1">
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="goToStep(3)">&larr; Back</button>
+                <button class="btn btn-success" onclick="goToStep(5)">Next: Generate Report &rarr;</button>
+            </div>
+        </div>
+
+        <!-- Step 5: Generate -->
+        <div class="panel" id="panel-5">
+            <h2>Generate SCRA Report</h2>
+            <p style="font-size:9pt;color:#666;margin-bottom:14px;">
+                Review your inputs and click Generate to produce the complete Smoke Control
+                Rational Analysis. The report includes all 8 sections, calculation traces,
+                floor-by-floor results, and 6 appendices.
+            </p>
+
+            <div id="generation-summary"></div>
+
+            <div class="btn-group">
+                <button class="btn btn-secondary" onclick="goToStep(4)">&larr; Back</button>
+                <button class="btn btn-success" id="btn-generate" onclick="generateReport()">
+                    Generate SCRA Report
+                </button>
+            </div>
+
+            <div class="progress-bar" id="progress-bar" style="display:none;">
+                <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+            </div>
+
+            <div id="report-container" style="display:none;margin-top:20px;">
+                <h3>Generated Report</h3>
+                <div class="btn-group" style="margin-bottom:10px;">
+                    <button class="btn btn-primary" onclick="openReportNewTab()">Open in New Tab</button>
+                    <button class="btn btn-secondary" onclick="printReport()">Print / Save PDF</button>
+                </div>
+                <iframe class="report-frame" id="report-frame"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/scra.js"></script>
+</body>
+</html>

@@ -1764,6 +1764,144 @@ async def estimation_report(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# SCRA Generator endpoints
+# ---------------------------------------------------------------------------
+from core.scra_models import (
+    BuildingDescription,
+    ClimateData,
+    ProjectInfo,
+    SCRAConfig,
+    StairDefinition,
+)
+from core.scra_generator import SCRAGenerator
+from core.scra_report import generate_scra_report
+
+
+@app.get("/scra", response_class=HTMLResponse)
+async def scra_page(request: Request):
+    return templates.TemplateResponse("scra.html", {"request": request})
+
+
+@app.post("/api/scra/parse-prj")
+async def scra_parse_prj(file: UploadFile = File(...)):
+    """Upload and parse a PRJ file for SCRA generation."""
+    if not file.filename or not file.filename.lower().endswith(".prj"):
+        raise HTTPException(400, "Please upload a .prj file")
+
+    projects_dir = BASE_DIR / "Projects"
+    projects_dir.mkdir(exist_ok=True)
+    dest = projects_dir / file.filename
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    try:
+        from core.scra_generator import extract_building_from_prj
+        data = extract_building_from_prj(str(dest))
+        data["prj_path"] = str(dest)
+        return data
+    except Exception as e:
+        raise HTTPException(422, f"Failed to parse PRJ file: {e}")
+
+
+@app.post("/api/scra/generate")
+async def scra_generate(request: Request):
+    """Generate a complete SCRA report."""
+    body = await request.json()
+
+    try:
+        # Build project info
+        proj_data = body.get("project", {})
+        project = ProjectInfo(
+            project_name=proj_data.get("project_name", ""),
+            project_number=proj_data.get("project_number", ""),
+            project_address=proj_data.get("project_address", ""),
+            project_city=proj_data.get("project_city", ""),
+            project_state=proj_data.get("project_state", "California"),
+            submittal_type=proj_data.get("submittal_type", "First Submittal"),
+            report_date=proj_data.get("report_date", ""),
+            prepared_for_name=proj_data.get("prepared_for_name", ""),
+            prepared_for_address=proj_data.get("prepared_for_address", ""),
+            prepared_by_name=proj_data.get("prepared_by_name", "Simpson Gumpertz & Heger Inc."),
+            prepared_by_address=proj_data.get("prepared_by_address", ""),
+            prepared_by_phone=proj_data.get("prepared_by_phone", ""),
+        )
+
+        # Build building description
+        bldg_data = body.get("building", {})
+        building = BuildingDescription(
+            building_name=bldg_data.get("building_name", ""),
+            building_abbreviation=bldg_data.get("building_abbreviation", ""),
+            total_stories=bldg_data.get("total_stories", 10),
+            above_grade_parking=bldg_data.get("above_grade_parking", 0),
+            subterranean_levels=bldg_data.get("subterranean_levels", 0),
+            building_type=bldg_data.get("building_type", "high-rise office tower"),
+            is_sprinklered=bldg_data.get("is_sprinklered", True),
+            tenant_name=bldg_data.get("tenant_name", ""),
+            scope_bottom_level=bldg_data.get("scope_bottom_level", 1),
+            scope_top_level=bldg_data.get("scope_top_level", 10),
+            scope_description=f"Levels {bldg_data.get('scope_bottom_level', 1)} through {bldg_data.get('scope_top_level', 10)}",
+            base_scra_author=bldg_data.get("base_scra_author", ""),
+            base_scra_date=bldg_data.get("base_scra_date", ""),
+            base_scra_revision=bldg_data.get("base_scra_revision", ""),
+        )
+
+        # Build climate data
+        clim_data = body.get("climate", {})
+        climate = ClimateData(
+            weather_station=clim_data.get("weather_station", ""),
+            winter_design_db=clim_data.get("winter_design_db", 44.4),
+            summer_design_db=clim_data.get("summer_design_db", 83.7),
+            indoor_design_temp=clim_data.get("indoor_design_temp", 68.0),
+            winter_design_db_C=clim_data.get("winter_design_db_C", 6.9),
+            summer_design_db_C=clim_data.get("summer_design_db_C", 28.7),
+            indoor_design_temp_C=clim_data.get("indoor_design_temp_C", 20.0),
+        )
+
+        # Build stair definitions
+        stair_defs = []
+        for s in body.get("stairs", []):
+            sd = StairDefinition(
+                label=s.get("label", "Stair 1"),
+                serves_bottom_level=s.get("serves_bottom_level", 1),
+                serves_top_level=s.get("serves_top_level", 10),
+                door_width_m=s.get("door_width_m", 1.1),
+                door_height_m=s.get("door_height_m", 2.1),
+                door_gap_mm=s.get("door_gap_mm", 3.0),
+                has_vestibule=s.get("has_vestibule", True),
+                is_smokeproof=True,
+            )
+            stair_defs.append(sd)
+
+        # Build criteria
+        criteria_data = body.get("criteria", {})
+
+        # Build SCRA config
+        config = SCRAConfig(
+            project=project,
+            building=building,
+            climate=climate,
+            stairs=stair_defs,
+            min_dp_inwg=criteria_data.get("min_dp_inwg", 0.05),
+            max_door_force_lbf=criteria_data.get("max_door_force_lbf", 30.0),
+            max_door_force_egress_lbf=criteria_data.get("max_door_force_egress_lbf", 15.0),
+            code_jurisdiction=body.get("code_jurisdiction", "LABC"),
+        )
+
+        # Run generator
+        generator = SCRAGenerator(config)
+        results = generator.generate()
+
+        # Generate HTML report
+        html = generate_scra_report(results)
+        return HTMLResponse(content=html)
+
+    except Exception as e:
+        logger.exception("SCRA generation failed")
+        raise HTTPException(500, f"SCRA generation failed: {e}")
+
+
+# ---------------------------------------------------------------------------
 # PRJ → Estimation auto-fill
 # ---------------------------------------------------------------------------
 @app.post("/api/estimation/extract-from-prj")
