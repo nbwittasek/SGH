@@ -1702,12 +1702,8 @@ async def run_estimation(request: Request):
             "q_leak_exterior_cfm": round(cms_to_cfm(er.q_leak_exterior), 0),
             "q_leak_vertical": round(er.q_leak_vertical, 5),
             "q_leak_vertical_cfm": round(cms_to_cfm(er.q_leak_vertical), 0),
-            "q_expansion": round(er.q_expansion, 5),
-            "q_expansion_cfm": round(cms_to_cfm(er.q_expansion), 0),
             "q_exhaust_total": round(er.q_exhaust_total, 5),
             "q_exhaust_total_cfm": round(cms_to_cfm(er.q_exhaust_total), 0),
-            "q_exhaust_std": round(er.q_exhaust_std, 5),
-            "q_exhaust_std_cfm": round(cms_to_cfm(er.q_exhaust_std), 0),
         }
 
         sensitivity = []

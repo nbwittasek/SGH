@@ -254,8 +254,8 @@
                         <input type="number" id="est-max-force" value="133" step="1" min="80" max="200">
                     </div>
                     <div class="form-group">
-                        <label for="est-exhaust-dp">Floor exhaust &Delta;P (Pa)</label>
-                        <input type="number" id="est-exhaust-dp" value="25" step="1" min="10" max="75">
+                        <label for="est-exhaust-dp">Floor exhaust &Delta;P (Pa) <small style="color:#888;">[0.08 in. w.g.]</small></label>
+                        <input type="number" id="est-exhaust-dp" value="19.92" step="0.5" min="5" max="75">
                     </div>
                     <div class="form-group">
                         <label for="est-closer-force">Door closer force (N)</label>
@@ -279,6 +279,7 @@
                 <div id="est-status" class="status-msg"></div>
                 <div class="btn-row" id="est-report-top" style="margin-bottom:12px; display:none;">
                     <button class="btn btn-primary" onclick="Est.generateReport()">Generate Report (HTML)</button>
+                    <button class="btn" style="background:#27ae60;color:#fff;" onclick="Est.transferToCONTAM()" title="Transfer supply &amp; exhaust CFM values to the CONTAM pressurization tool">Transfer to CONTAM Tool &rarr;</button>
                     <button class="btn" onclick="Est.nextTab('est-conditions')">&larr; Back to Inputs</button>
                 </div>
                 <div id="est-warnings" style="display:none;"></div>
@@ -328,6 +329,7 @@
                 <div class="btn-row" id="est-report-btns" style="margin-top:16px; display:none;">
                     <button class="btn" onclick="Est.nextTab('est-conditions')">&larr; Back to Inputs</button>
                     <button class="btn btn-primary" onclick="Est.generateReport()">Generate Report (HTML)</button>
+                    <button class="btn" style="background:#27ae60;color:#fff;" onclick="Est.transferToCONTAM()">Transfer to CONTAM Tool &rarr;</button>
                 </div>
             </section>
         </main>

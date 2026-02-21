@@ -111,21 +111,9 @@ _HTML_FORMULAS: Dict[str, str] = {
         f'(A<sub>Lf</sub> &middot; A<sub>floor</sub>) &middot; '
         f'{_sqrt(_frac("2 &Delta;P<sub>exhaust</sub>", "&rho;<sub>i</sub>"))}'
     ),
-    "EQ-23": (
-        f'Q<sub>expansion</sub> = Q<sub>fire</sub> &middot; '
-        f'({_frac("T<sub>f</sub>", "T<sub>i</sub>")} &minus; 1)'
-    ),
-    "EQ-24": (
-        f'Q<sub>fire</sub> = '
-        f'{_frac("&#7716;", "&rho;<sub>i</sub> &middot; c<sub>p</sub> &middot; (T<sub>f</sub> &minus; T<sub>i</sub>)")}'
-    ),
     "EQ-25": (
         'Q<sub>exhaust</sub> = Q<sub>stair</sub> + Q<sub>elev</sub> '
-        '+ Q<sub>ext</sub> + Q<sub>vert</sub> + Q<sub>expansion</sub>'
-    ),
-    "EQ-26": (
-        f'Q<sub>std</sub> = Q<sub>exhaust</sub> &middot; '
-        f'{_frac("T<sub>f</sub>", "T<sub>std</sub>")}'
+        '+ Q<sub>ext</sub> + Q<sub>vert</sub>'
     ),
     "DESIGN": (
         'Q<sub>design</sub> = max(Q<sub>supply,closed</sub> , Q<sub>supply,open</sub>)'
@@ -209,12 +197,13 @@ _TRACE_SECTIONS = [
     {
         "id": "exhaust",
         "title": "8. Fire Floor Exhaust (Depressurization)",
-        "eq_ids": ["EQ-19", "EQ-20", "EQ-21", "EQ-22", "EQ-24", "EQ-23", "EQ-25", "EQ-26"],
+        "eq_ids": ["EQ-19", "EQ-20", "EQ-21", "EQ-22", "EQ-25"],
         "prose": (
-            "All airflow sources entering the fire floor &mdash; stairwell leakage, "
-            "elevator shaft leakage, exterior wall leakage, vertical leakage from "
-            "adjacent floors, and thermal expansion &mdash; are summed to determine "
-            "the required exhaust rate."
+            "The fire floor exhaust is calculated at ambient temperature per ASHRAE, "
+            "targeting a depressurization of 0.08 in.&nbsp;w.g. All leakage "
+            "inflows &mdash; from pressurized stairwells, elevator shafts, "
+            "exterior walls, and adjacent floors above and below &mdash; are "
+            "summed to determine the required exhaust rate."
         ),
     },
 ]
@@ -477,14 +466,12 @@ def generate_estimation_report(result: EstimationResult) -> str:
     er = result.exhaust_result
     system_rows += f"""
     <tr><td colspan="2" style="border-top:2px solid #2e3a4e;"></td></tr>
-    <tr><td>Fire Floor Exhaust (at fire temp)</td><td>{_fmt_flow(er.q_exhaust_total)}</td></tr>
-    <tr><td><strong>Fire Floor Exhaust (std 20&deg;C)</strong></td><td><strong>{_fmt_flow(er.q_exhaust_std)}</strong></td></tr>
+    <tr class="highlight-row"><td><strong>Fire Floor Exhaust (ambient)</strong></td><td><strong>{_fmt_flow(er.q_exhaust_total)}</strong></td></tr>
     <tr><td colspan="2" style="border-top:1px solid #ddd;"></td></tr>
     <tr><td>Exhaust &mdash; stair leakage (EQ-19)</td><td>{_fmt_flow(er.q_leak_stairs)}</td></tr>
     <tr><td>Exhaust &mdash; elevator leakage (EQ-20)</td><td>{_fmt_flow(er.q_leak_elevators)}</td></tr>
     <tr><td>Exhaust &mdash; exterior wall leakage (EQ-21)</td><td>{_fmt_flow(er.q_leak_exterior)}</td></tr>
     <tr><td>Exhaust &mdash; vertical leakage (EQ-22)</td><td>{_fmt_flow(er.q_leak_vertical)}</td></tr>
-    <tr><td>Exhaust &mdash; thermal expansion (EQ-23)</td><td>{_fmt_flow(er.q_expansion)}</td></tr>
     <tr><td colspan="2" style="border-top:1px solid #ddd;"></td></tr>
     <tr><td>Design criteria &mdash; Min &Delta;P (closed)</td><td>{_fmt_dp(criteria.min_dp_closed)}</td></tr>
     <tr><td>Design criteria &mdash; Max &Delta;P (closed)</td><td>{_fmt_dp(criteria.max_dp_closed)}</td></tr>
@@ -706,9 +693,12 @@ def generate_estimation_report(result: EstimationResult) -> str:
 
         <h3 class="meth-section-title">8. Fire Floor Exhaust (Depressurization)</h3>
         <p class="meth-prose">
-            The exhaust system must remove all airflows entering the fire floor: stairwell
-            leakage (EQ-19), elevator shaft leakage (EQ-20), exterior wall leakage (EQ-21),
-            vertical leakage from adjacent floors (EQ-22), and thermal expansion (EQ-23/24).
+            Per ASHRAE, exhaust is calculated at ambient conditions &mdash; targeting a
+            depressurization of 0.08&nbsp;in.&nbsp;w.g. (&asymp;&nbsp;20&nbsp;Pa) on the
+            fire floor. The exhaust system must overcome all leakage inflows: stairwell
+            leakage (EQ-19), elevator shaft leakage (EQ-20), exterior wall leakage
+            (EQ-21), and vertical leakage from adjacent floors (EQ-22). No fire
+            heat-release or thermal-expansion terms are included.
         </p>
         <div class="meth-eq-block">
             <span class="meth-eq-label">EQ-19</span>
@@ -727,23 +717,11 @@ def generate_estimation_report(result: EstimationResult) -> str:
             <div class="meth-eq-formula">$$Q_{{\mathrm{{vert}}}} = 2\,C_d \cdot (A_{{Lf}} \cdot A_{{\mathrm{{floor}}}}) \cdot \sqrt{{\frac{{2\,\Delta P_{{\mathrm{{exhaust}}}}}}{{\rho_i}}}}$$</div>
         </div>
         <p class="meth-prose">
-            Thermal expansion: air entrained by the fire (EQ-24) expands as it heats:
-        </p>
-        <div class="meth-eq-block">
-            <span class="meth-eq-label">EQ-23/24</span>
-            <div class="meth-eq-formula">$$Q_{{\mathrm{{expansion}}}} = \frac{{\dot{{H}}}}{{\rho_i \cdot c_p \cdot (T_f - T_i)}} \cdot \left(\frac{{T_f}}{{T_i}} - 1\right)$$</div>
-        </div>
-        <p class="meth-prose">
-            The total exhaust and its standard-conditions equivalent:
+            The <strong>total required exhaust</strong> at ambient conditions:
         </p>
         <div class="meth-eq-block" style="background:#eef6ff;border-color:#b0d4f1;border-width:2px;">
             <span class="meth-eq-label">EQ-25</span>
-            <div class="meth-eq-formula">$$\boxed{{Q_{{\mathrm{{exhaust}}}} = Q_{{\mathrm{{stair}}}} + Q_{{\mathrm{{elev}}}} + Q_{{\mathrm{{ext}}}} + Q_{{\mathrm{{vert}}}} + Q_{{\mathrm{{expansion}}}}}}$$</div>
-        </div>
-        <div class="meth-eq-block">
-            <span class="meth-eq-label">EQ-26</span>
-            <div class="meth-eq-formula">$$Q_{{\mathrm{{std}}}} = Q_{{\mathrm{{exhaust}}}} \cdot \frac{{T_f}}{{T_{{\mathrm{{std}}}}}}$$</div>
-            <div class="meth-eq-where">\(T_{{\mathrm{{std}}}} = 293.15\;\text{{K}}\) (20&deg;C)</div>
+            <div class="meth-eq-formula">$$\boxed{{Q_{{\mathrm{{exhaust}}}} = Q_{{\mathrm{{stair}}}} + Q_{{\mathrm{{elev}}}} + Q_{{\mathrm{{ext}}}} + Q_{{\mathrm{{vert}}}}}}$$</div>
         </div>
 
         <h3 class="meth-section-title">9. Iterative Solution and Sensitivity Analysis</h3>

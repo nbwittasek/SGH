@@ -105,7 +105,7 @@ class DesignCriteria:
     max_dp_closed: float = 87.0        # Pa
     min_door_velocity: float = 1.0     # m/s (sprinklered default)
     max_door_force: float = 133.0      # N
-    floor_exhaust_dp: float = 25.0     # Pa
+    floor_exhaust_dp: float = 19.92     # Pa (0.08 in. w.g.)
     door_closer_force: float = 55.0    # N (typical)
     handle_to_latch: float = 0.075     # m
 
@@ -170,16 +170,14 @@ class StairResult:
 
 @dataclass
 class ExhaustResult:
-    """Fire floor exhaust results (Section 5)."""
+    """Fire floor exhaust results — ambient temperature leakage method per ASHRAE."""
     fire_floor: int
     fire_floor_label: str
     q_leak_stairs: float         # m^3/s (from all stairwells)
     q_leak_elevators: float      # m^3/s
     q_leak_exterior: float       # m^3/s
     q_leak_vertical: float       # m^3/s (above + below)
-    q_expansion: float           # m^3/s
-    q_exhaust_total: float       # m^3/s (at fire temp)
-    q_exhaust_std: float         # m^3/s (at standard 20 deg C)
+    q_exhaust_total: float       # m^3/s (at ambient conditions)
 
 
 @dataclass

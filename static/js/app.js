@@ -2671,12 +2671,42 @@ const App = (() => {
         }
     }
 
+    function checkEstimationTransfer() {
+        const raw = localStorage.getItem('estimation_transfer');
+        if (!raw) return;
+
+        try {
+            const transfer = JSON.parse(raw);
+            // Build an info banner at the top of the main content
+            const main = document.querySelector('.content');
+            if (!main) return;
+
+            let html = '<div id="estimation-transfer-banner" style="background:#e8f8ef;border:2px solid #27ae60;border-radius:6px;padding:12px 16px;margin-bottom:16px;">';
+            html += '<strong style="color:#1a6b3c;">Estimation Results Available</strong>';
+            html += '<p style="margin:6px 0 8px;font-size:9pt;color:#333;">Use these values to configure stair pressurization SCFM in Tab 3:</p>';
+            html += '<table style="font-size:9pt;border-collapse:collapse;margin-bottom:8px;">';
+            for (const s of transfer.stairs) {
+                html += `<tr><td style="padding:2px 12px 2px 0;font-weight:600;">${s.label}</td><td style="padding:2px 8px;">${s.supply_design_cfm} CFM design supply</td><td style="padding:2px 8px;color:#777;">(${s.supply_closed_cfm} closed / ${s.supply_open_cfm} open)</td></tr>`;
+            }
+            html += `<tr><td style="padding:2px 12px 2px 0;font-weight:600;">Exhaust</td><td style="padding:2px 8px;">${transfer.exhaust_cfm} CFM</td><td style="padding:2px 8px;color:#777;">(fire floor depressurization)</td></tr>`;
+            html += '</table>';
+            html += '<button class="btn btn-sm" onclick="document.getElementById(\'estimation-transfer-banner\').remove(); localStorage.removeItem(\'estimation_transfer\');">Dismiss</button>';
+            html += '</div>';
+
+            main.insertAdjacentHTML('afterbegin', html);
+        } catch (e) {
+            // Invalid data — clear it
+            localStorage.removeItem('estimation_transfer');
+        }
+    }
+
     function init() {
         initTabs();
         initScenarioSelectAll();
         loadRecentProjects();
         loadResultsScenarios();
         initStairCriteriaGroups();
+        checkEstimationTransfer();
     }
 
     document.addEventListener('DOMContentLoaded', init);

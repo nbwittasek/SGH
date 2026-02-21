@@ -351,10 +351,8 @@ const Est = (() => {
         if (data.exhaust_result) {
             const er = data.exhaust_result;
             html += '<tr><td colspan="2" style="border-top:2px solid #2e3a4e;"></td></tr>';
-            html += `<tr class="highlight-row"><td><strong>Fire Floor Exhaust (at fire temp)</strong></td>
+            html += `<tr class="highlight-row"><td><strong>Fire Floor Exhaust (ambient)</strong></td>
                      <td><strong>${er.q_exhaust_total.toFixed(4)} m&sup3;/s (${er.q_exhaust_total_cfm} CFM)</strong></td></tr>`;
-            html += `<tr class="highlight-row"><td><strong>Fire Floor Exhaust (std 20&deg;C)</strong></td>
-                     <td><strong>${er.q_exhaust_std.toFixed(4)} m&sup3;/s (${er.q_exhaust_std_cfm} CFM)</strong></td></tr>`;
         }
         html += `<tr><td>NPP Height</td><td>${data.npp_height} m above grade</td></tr>`;
 
@@ -423,7 +421,6 @@ const Est = (() => {
             ['Elevator leakage (EQ-20)', er.q_leak_elevators, er.q_leak_elevators_cfm],
             ['Exterior wall leakage (EQ-21)', er.q_leak_exterior, er.q_leak_exterior_cfm],
             ['Vertical leakage (EQ-22)', er.q_leak_vertical, er.q_leak_vertical_cfm],
-            ['Thermal expansion (EQ-23)', er.q_expansion, er.q_expansion_cfm],
         ];
         for (const [name, flowVal, cfm] of items) {
             const safeVal = flowVal || 0;
@@ -827,12 +824,13 @@ const Est = (() => {
         <div class="meth-section">
             <h4 class="meth-section-title">8. Fire Floor Exhaust (Depressurization)</h4>
             <p class="meth-prose">
-                The fire floor exhaust system must remove enough air to maintain the
-                fire-floor depressurization differential
-                (&Delta;P<sub>exhaust</sub> = ${exhDp} Pa). The total exhaust rate
-                equals the sum of all airflows entering the fire floor from every source:
-                pressurized stairwells, elevator shafts, the building exterior, adjacent
-                floors above and below, and the thermal expansion of air due to the fire.
+                Per ASHRAE, the fire floor exhaust is calculated at <strong>ambient
+                temperature</strong>, targeting a depressurization of
+                <strong>0.08&nbsp;in.&nbsp;w.g.</strong> (&asymp;&nbsp;20&nbsp;Pa) on the
+                fire floor (&Delta;P<sub>exhaust</sub> = ${exhDp} Pa). The exhaust
+                rate equals the sum of all leakage inflows entering the fire floor.
+                No design fire, thermal expansion, or elevated-temperature correction
+                is applied.
             </p>
             <p class="meth-prose">
                 <strong>Stairwell leakage</strong> into the fire floor is driven by both the
@@ -870,44 +868,12 @@ const Est = (() => {
                 </div>
             </div>
             <p class="meth-prose">
-                <strong>Thermal expansion.</strong>&ensp;The fire heats air on the fire floor,
-                causing it to expand. The volume of air entrained into the fire plume is:
-            </p>
-            <div class="meth-eq-block">
-                <span class="meth-eq-label">EQ-24</span>
-                <div class="meth-eq-formula">Q<sub>fire</sub> = ${frac('&#7714;', '&rho;<sub>i</sub> &middot; c<sub>p</sub> &middot; (T<sub>f</sub> &minus; T<sub>i</sub>)')}</div>
-                <div class="meth-eq-where">
-                    where &#7714; is the design fire heat release rate (W) and
-                    c<sub>p</sub> = 1005 J/(kg&middot;K).
-                </div>
-            </div>
-            <p class="meth-prose">
-                The net volumetric expansion of this air as it is heated from indoor to
-                fire temperature is:
-            </p>
-            <div class="meth-eq-block">
-                <span class="meth-eq-label">EQ-23</span>
-                <div class="meth-eq-formula">Q<sub>expansion</sub> = Q<sub>fire</sub> &middot; (${frac('T<sub>f</sub>', 'T<sub>i</sub>')} &minus; 1)</div>
-            </div>
-            <p class="meth-prose">
-                The <strong>total required exhaust</strong> at fire-floor temperature is the
-                sum of all five components:
+                The <strong>total required exhaust</strong> at ambient conditions is the
+                sum of all four leakage components:
             </p>
             <div class="meth-eq-block highlight">
                 <span class="meth-eq-label">EQ-25</span>
-                <div class="meth-eq-formula"><span class="meth-eq-boxed">Q<sub>exhaust</sub> = Q<sub>stair</sub> + Q<sub>elev</sub> + Q<sub>ext</sub> + Q<sub>vert</sub> + Q<sub>expansion</sub></span></div>
-            </div>
-            <p class="meth-prose">
-                Because exhaust fans are typically rated at standard conditions (20&deg;C), the
-                exhaust rate is corrected for temperature:
-            </p>
-            <div class="meth-eq-block">
-                <span class="meth-eq-label">EQ-26</span>
-                <div class="meth-eq-formula">Q<sub>std</sub> = Q<sub>exhaust</sub> &middot; ${frac('T<sub>f</sub>', 'T<sub>std</sub>')}</div>
-                <div class="meth-eq-where">
-                    where T<sub>std</sub> = 293.15 K (20&deg;C). This corrected
-                    value is the basis for exhaust fan selection.
-                </div>
+                <div class="meth-eq-formula"><span class="meth-eq-boxed">Q<sub>exhaust</sub> = Q<sub>stair</sub> + Q<sub>elev</sub> + Q<sub>ext</sub> + Q<sub>vert</sub></span></div>
             </div>
         </div>
 
@@ -958,16 +924,53 @@ const Est = (() => {
         if (!div) return;
         div.style.display = 'block';
 
-        let html = '';
+        // Group traces by equation_id, preserving order
+        const groups = [];
+        const seen = new Set();
         for (const tr of data.calculation_traces) {
-            const inputs = Object.entries(tr.inputs || {}).map(([k,v]) => `${esc(k)} = ${esc(v)}`).join(', ');
-            html += `<div class="trace-block">
-                <div class="trace-eq">${esc(tr.equation_id)}: ${esc(tr.description)}</div>
-                <div>Formula: ${esc(tr.formula)}</div>
-                <div>Inputs: ${esc(inputs)}</div>
-                <div>Substitution: ${esc(tr.substitution)}</div>
-                <div>Result: <strong>${esc(tr.result)}</strong></div>
+            if (!seen.has(tr.equation_id)) {
+                seen.add(tr.equation_id);
+                groups.push({ eqId: tr.equation_id, traces: [] });
+            }
+            groups.find(g => g.eqId === tr.equation_id).traces.push(tr);
+        }
+
+        let html = '';
+        for (const group of groups) {
+            const eqId = group.eqId;
+            const isHighlight = (eqId === 'EQ-25' || eqId === 'DESIGN');
+
+            html += `<div class="journal-eq-group${isHighlight ? ' journal-highlight' : ''}">`;
+            html += `<div class="journal-eq-header">
+                <span class="journal-eq-id">${esc(eqId)}</span>
             </div>`;
+
+            for (const tr of group.traces) {
+                html += `<div class="journal-eq-instance">`;
+                html += `<div class="journal-eq-desc">${esc(tr.description)}</div>`;
+
+                // Formula in styled block
+                html += `<div class="journal-eq-formula">${esc(tr.formula)}</div>`;
+
+                // Inputs as a compact table
+                const entries = Object.entries(tr.inputs || {});
+                if (entries.length > 0) {
+                    html += '<div class="journal-eq-where"><span class="journal-where-label">where</span>';
+                    html += '<table class="journal-inputs-table">';
+                    for (const [k, v] of entries) {
+                        html += `<tr><td class="journal-var">${esc(k)}</td><td class="journal-eq-sep">=</td><td class="journal-val">${esc(v)}</td></tr>`;
+                    }
+                    html += '</table></div>';
+                }
+
+                // Substitution
+                html += `<div class="journal-eq-sub">${esc(tr.substitution)}</div>`;
+
+                // Result in highlighted box
+                html += `<div class="journal-eq-result">${esc(tr.result)}</div>`;
+                html += '</div>';
+            }
+            html += '</div>';
         }
 
         document.getElementById('est-traces-content').innerHTML = html;
@@ -1205,6 +1208,43 @@ const Est = (() => {
     }
 
     // -----------------------------------------------------------------------
+    // Transfer to CONTAM Tool
+    // -----------------------------------------------------------------------
+    function transferToCONTAM() {
+        if (!lastResult || !lastResult.stair_results) {
+            alert('Run the estimation first to generate results.');
+            return;
+        }
+
+        // Build transfer payload with design supply CFM per stair + exhaust CFM
+        const transfer = {
+            timestamp: new Date().toISOString(),
+            stairs: lastResult.stair_results.map(sr => ({
+                label: sr.label,
+                supply_design_cfm: sr.q_supply_design_cfm,
+                supply_closed_cfm: sr.q_supply_closed_cfm,
+                supply_open_cfm: sr.q_supply_open_cfm,
+            })),
+            exhaust_cfm: lastResult.exhaust_result ? lastResult.exhaust_result.q_exhaust_total_cfm : 0,
+            npp_height_m: lastResult.npp_height,
+            all_constraints_met: lastResult.all_constraints_met,
+        };
+
+        localStorage.setItem('estimation_transfer', JSON.stringify(transfer));
+
+        // Build a summary message
+        let msg = 'Estimation results ready for CONTAM tool:\n\n';
+        for (const s of transfer.stairs) {
+            msg += `  ${s.label}: ${s.supply_design_cfm} CFM (design supply)\n`;
+        }
+        msg += `  Exhaust: ${transfer.exhaust_cfm} CFM\n\n`;
+        msg += 'Opening the CONTAM tool now. Use the values above to configure your stair pressurization SCFM and corridor exhaust rates.';
+
+        alert(msg);
+        window.open('/', '_blank');
+    }
+
+    // -----------------------------------------------------------------------
     // Bootstrap
     // -----------------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', init);
@@ -1218,5 +1258,6 @@ const Est = (() => {
         generateReport,
         importPrjFile,
         toggleMethodology,
+        transferToCONTAM,
     };
 })();

@@ -451,26 +451,25 @@ class EstimationEngine:
 
         self.rho_o = eq01_air_density(P, self.T_o_K)
         self.rho_i = eq01_air_density(P, self.T_i_K)
-        self.rho_f = eq01_air_density(P, self.T_f_K)
         self.rho_s = eq01_air_density(P, self.T_s_K)
 
         self._add_trace(
-            "EQ-01", "Outdoor air density", "rho = P_atm / (R_air * T)",
+            "EQ-01", "Outdoor air density", "ρ = P_atm / (R_air × T)",
             {"P_atm": f"{P:.0f} Pa", "T": f"{self.T_o_K:.2f} K"},
-            f"rho = {P:.0f} / (287.058 * {self.T_o_K:.2f})",
-            f"rho_o = {self.rho_o:.4f} kg/m^3",
+            f"ρ = {P:.0f} / (287.058 × {self.T_o_K:.2f})",
+            f"ρ_o = {self.rho_o:.4f} kg/m³",
         )
         self._add_trace(
-            "EQ-01", "Indoor air density", "rho = P_atm / (R_air * T)",
+            "EQ-01", "Indoor air density", "ρ = P_atm / (R_air × T)",
             {"P_atm": f"{P:.0f} Pa", "T": f"{self.T_i_K:.2f} K"},
-            f"rho = {P:.0f} / (287.058 * {self.T_i_K:.2f})",
-            f"rho_i = {self.rho_i:.4f} kg/m^3",
+            f"ρ = {P:.0f} / (287.058 × {self.T_i_K:.2f})",
+            f"ρ_i = {self.rho_i:.4f} kg/m³",
         )
         self._add_trace(
-            "EQ-01", "Fire floor air density", "rho = P_atm / (R_air * T)",
-            {"P_atm": f"{P:.0f} Pa", "T": f"{self.T_f_K:.2f} K"},
-            f"rho = {P:.0f} / (287.058 * {self.T_f_K:.2f})",
-            f"rho_f = {self.rho_f:.4f} kg/m^3",
+            "EQ-01", "Stairwell air density", "ρ = P_atm / (R_air × T)",
+            {"P_atm": f"{P:.0f} Pa", "T": f"{self.T_s_K:.2f} K"},
+            f"ρ = {P:.0f} / (287.058 × {self.T_s_K:.2f})",
+            f"ρ_s = {self.rho_s:.4f} kg/m³",
         )
 
     def _compute_npp(self, dP_mech: float) -> float:
@@ -790,8 +789,13 @@ class EstimationEngine:
         self, stair_results: List[StairResult], dP_mech: float,
         dP_exhaust: float, wind_pressures: Dict[str, float],
     ) -> ExhaustResult:
-        """Compute fire floor exhaust requirement (Section 5)."""
-        cond = self.config.conditions
+        """Compute fire floor exhaust requirement per ASHRAE.
+
+        Exhaust is calculated at ambient temperature — the exhaust system
+        must overcome leakage inflows at the target depressurization
+        (default 0.08 in. w.g. ≈ 20 Pa).  No design fire, thermal
+        expansion, or elevated-temperature correction is applied.
+        """
         bldg = self.config.building
         elev = self.config.elevators
         h_f = bldg.floor_height
@@ -878,58 +882,18 @@ class EstimationEngine:
             f"Q_vertical = {q_vertical:.5f} m³/s ({cms_to_cfm(q_vertical):.0f} CFM)",
         )
 
-        # -- EQ-24: Fire entrainment --
-        Q_fire = eq24_fire_entrainment(
-            cond.design_fire_hrr, self.rho_i, self.T_f_K, self.T_i_K
-        )
+        # -- EQ-25: Total exhaust (ambient conditions — no fire entrainment/expansion) --
+        q_exhaust = q_stairs_total + q_elev + q_ext_total + q_vertical
 
         self._add_trace(
-            "EQ-24", "Exhaust — Fire plume entrainment",
-            "Q_fire = H_dot / (ρ_i × c_p × (T_f − T_i))",
-            {"H_dot": f"{cond.design_fire_hrr:.0f} kW",
-             "ρ_i": f"{self.rho_i:.4f} kg/m³",
-             "T_f": f"{self.T_f_K:.2f} K", "T_i": f"{self.T_i_K:.2f} K"},
-            f"Q_fire = ({cond.design_fire_hrr:.0f} × 1000) / ({self.rho_i:.4f} × 1005 × ({self.T_f_K:.2f} − {self.T_i_K:.2f}))",
-            f"Q_fire = {Q_fire:.5f} m³/s ({cms_to_cfm(Q_fire):.0f} CFM)",
-        )
-
-        # -- EQ-23: Thermal expansion --
-        q_expansion = eq23_thermal_expansion(Q_fire, self.T_f_K, self.T_i_K)
-
-        self._add_trace(
-            "EQ-23", "Exhaust — Thermal expansion volume",
-            "Q_expansion = Q_fire × (T_f / T_i − 1)",
-            {"Q_fire": f"{Q_fire:.5f} m³/s",
-             "T_f": f"{self.T_f_K:.2f} K", "T_i": f"{self.T_i_K:.2f} K"},
-            f"Q_expansion = {Q_fire:.5f} × ({self.T_f_K:.2f} / {self.T_i_K:.2f} − 1)",
-            f"Q_expansion = {q_expansion:.5f} m³/s ({cms_to_cfm(q_expansion):.0f} CFM)",
-        )
-
-        # -- EQ-25: Total exhaust --
-        q_exhaust = q_stairs_total + q_elev + q_ext_total + q_vertical + q_expansion
-
-        self._add_trace(
-            "EQ-25", "Exhaust — Total fire floor exhaust (at fire temperature)",
-            "Q_exhaust = Q_stairs + Q_elev + Q_ext + Q_vert + Q_expansion",
+            "EQ-25", "Exhaust — Total fire floor exhaust (ambient conditions)",
+            "Q_exhaust = Q_stairs + Q_elev + Q_ext + Q_vert",
             {"Q_stairs": f"{q_stairs_total:.5f} m³/s",
              "Q_elev": f"{q_elev:.5f} m³/s",
              "Q_ext": f"{q_ext_total:.5f} m³/s",
-             "Q_vert": f"{q_vertical:.5f} m³/s",
-             "Q_expansion": f"{q_expansion:.5f} m³/s"},
-            f"Q_exhaust = {q_stairs_total:.5f} + {q_elev:.5f} + {q_ext_total:.5f} + {q_vertical:.5f} + {q_expansion:.5f}",
+             "Q_vert": f"{q_vertical:.5f} m³/s"},
+            f"Q_exhaust = {q_stairs_total:.5f} + {q_elev:.5f} + {q_ext_total:.5f} + {q_vertical:.5f}",
             f"Q_exhaust = {q_exhaust:.5f} m³/s ({cms_to_cfm(q_exhaust):.0f} CFM)",
-        )
-
-        # -- EQ-26: Standard conditions --
-        q_exhaust_std = q_exhaust * (self.T_f_K / T_STD_K)
-
-        self._add_trace(
-            "EQ-26", "Exhaust — Standard conditions (20°C reference)",
-            "Q_std = Q_exhaust × (T_f / T_std)",
-            {"Q_exhaust": f"{q_exhaust:.5f} m³/s",
-             "T_f": f"{self.T_f_K:.2f} K", "T_std": f"{T_STD_K:.2f} K"},
-            f"Q_std = {q_exhaust:.5f} × ({self.T_f_K:.2f} / {T_STD_K:.2f})",
-            f"Q_std = {q_exhaust_std:.5f} m³/s ({cms_to_cfm(q_exhaust_std):.0f} CFM)",
         )
 
         fire_label = self._floor_label(fire_floor)
@@ -941,9 +905,7 @@ class EstimationEngine:
             q_leak_elevators=q_elev,
             q_leak_exterior=q_ext_total,
             q_leak_vertical=q_vertical,
-            q_expansion=q_expansion,
             q_exhaust_total=q_exhaust,
-            q_exhaust_std=q_exhaust_std,
         )
 
     def solve(self, season: str = "winter") -> EstimationResult:
