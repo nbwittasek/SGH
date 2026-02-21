@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CONTAM Pressurization Tool — SGH</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=24">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>CONTAM</h1>
+                <p class="subtitle">Pressurization Tool</p>
+                <p class="brand">SGH</p>
+            </div>
+            <ul class="nav-tabs">
+                <li class="nav-tab active" data-tab="project-setup">
+                    <span class="tab-num">1</span>
+                    <span class="tab-label">Project Setup</span>
+                </li>
+                <li class="nav-tab" data-tab="model-import">
+                    <span class="tab-num">2</span>
+                    <span class="tab-label">Model Import &amp; Parsing</span>
+                </li>
+                <li class="nav-tab" data-tab="pressurization">
+                    <span class="tab-num">3</span>
+                    <span class="tab-label">Pressurization Config</span>
+                </li>
+                <li class="nav-tab" data-tab="scenarios">
+                    <span class="tab-num">4</span>
+                    <span class="tab-label">Scenario Matrix</span>
+                </li>
+                <li class="nav-tab" data-tab="run-analysis">
+                    <span class="tab-num">5</span>
+                    <span class="tab-label">Run Analysis</span>
+                </li>
+                <li class="nav-tab" data-tab="results">
+                    <span class="tab-num">6</span>
+                    <span class="tab-label">Results &amp; Reporting</span>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="content">
+            <!-- Tab 1: Project Setup -->
+            <section id="project-setup" class="tab-panel active">
+                <h2>Project Setup</h2>
+                <div class="form-group">
+                    <label for="project-name">Project Name</label>
+                    <input type="text" id="project-name" placeholder="e.g., 5411 Wilshire">
+                </div>
+                <div class="form-group">
+                    <label for="project-folder">Project Folder</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="project-folder" placeholder="Select or enter project folder path">
+                        <button class="btn btn-sm" onclick="App.browseFolder('project-folder')">Browse</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="contam-exe">CONTAM Executable Path</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="contam-exe" placeholder="Path to contamX3.exe">
+                        <button class="btn btn-sm" onclick="App.detectContam()">Auto-Detect</button>
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-primary" onclick="App.createProject()">Create New Project</button>
+                    <button class="btn" onclick="App.openProject()">Open Existing Project</button>
+                </div>
+                <div id="recent-projects" class="recent-projects">
+                    <h3>Recent Projects</h3>
+                    <ul id="recent-list"></ul>
+                </div>
+            </section>
+
+            <!-- Tab 2: Model Import & Parsing -->
+            <section id="model-import" class="tab-panel">
+                <h2>Model Import &amp; Parsing</h2>
+                <div class="form-group">
+                    <label>Import CONTAM PRJ File</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="prj-filepath" placeholder="Enter full path to .prj file">
+                        <button class="btn btn-sm" onclick="App.browseFolder('prj-filepath')">Browse</button>
+                        <button class="btn btn-primary btn-sm" onclick="App.parseModel()">Parse</button>
+                    </div>
+                </div>
+                <div id="parse-status" class="status-msg"></div>
+
+                <div id="parsed-data" class="parsed-data" style="display:none;">
+                    <div class="parsed-summary">
+                        <span class="badge" id="badge-levels">Levels: 0</span>
+                        <span class="badge" id="badge-zones">Zones: 0</span>
+                        <span class="badge" id="badge-elements">Elements: 0</span>
+                        <span class="badge" id="badge-paths">Paths: 0</span>
+                        <span class="badge" id="badge-ahs">AHS: 0</span>
+                    </div>
+
+                    <!-- Sub-tabs for parsed data -->
+                    <div class="sub-tabs">
+                        <button class="sub-tab active" data-subtab="levels-table">Levels</button>
+                        <button class="sub-tab" data-subtab="zones-table">Zones</button>
+                        <button class="sub-tab" data-subtab="ahs-table">AHS</button>
+                        <button class="sub-tab" data-subtab="elements-table">Flow Elements</button>
+                        <button class="sub-tab" data-subtab="paths-table">Airflow Paths</button>
+                    </div>
+
+                    <div id="levels-table" class="sub-panel active">
+                        <div class="table-container">
+                            <table id="tbl-levels">
+                                <thead><tr><th>Index</th><th>Name</th><th>Ref Height (m)</th><th>Delta Height (m)</th><th>Icons</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="zones-table" class="sub-panel">
+                        <div class="filter-row">
+                            <label>Filter by Level: </label>
+                            <select id="zone-level-filter" onchange="App.filterZones()">
+                                <option value="">All Levels</option>
+                            </select>
+                            <input type="text" id="zone-search" placeholder="Search zones..." oninput="App.filterZones()">
+                        </div>
+                        <div class="table-container">
+                            <table id="tbl-zones">
+                                <thead><tr><th>ID</th><th>Name</th><th>Level</th><th>Level Name</th><th>Volume (m3)</th><th>Temp (K)</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="ahs-table" class="sub-panel">
+                        <div class="table-container">
+                            <table id="tbl-ahs">
+                                <thead><tr><th>ID</th><th>Name</th><th>Return Zone</th><th>Supply Zone</th><th>Return Path</th><th>Supply Path</th><th>Exhaust Path</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="elements-table" class="sub-panel">
+                        <input type="text" id="elem-search" placeholder="Search elements..." oninput="App.filterElements()">
+                        <div class="table-container">
+                            <table id="tbl-elements">
+                                <thead><tr><th>ID</th><th>Name</th><th>Type</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="paths-table" class="sub-panel">
+                        <div class="filter-row">
+                            <label>Filter by Level: </label>
+                            <select id="path-level-filter" onchange="App.filterPaths()"><option value="">All</option></select>
+                            <label>Filter by Element: </label>
+                            <select id="path-elem-filter" onchange="App.filterPaths()"><option value="">All</option></select>
+                        </div>
+                        <div class="table-container">
+                            <table id="tbl-paths">
+                                <thead><tr><th>ID</th><th>From Zone</th><th>To Zone</th><th>Element</th><th>AHS</th><th>Level</th><th>Icon</th><th>Dir</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab 3: Pressurization Configuration -->
+            <section id="pressurization" class="tab-panel">
+                <h2>Pressurization Configuration</h2>
+
+                <!-- Save/Load/Update toolbar -->
+                <div class="config-toolbar" style="margin-bottom:1rem;">
+                    <div class="btn-row">
+                        <button class="btn btn-sm" onclick="App.saveTab3Config()" title="Save all Tab 3 input values">&#128190; Save Config</button>
+                        <button class="btn btn-sm" onclick="App.loadTab3Config()" title="Restore previously saved Tab 3 values">&#128194; Load Config</button>
+                        <button class="btn btn-sm" onclick="App.generateExcelTemplates()" title="Create blank SCFM Excel templates for all stairs, corridors, and floor zones">&#128221; Generate SCFM Templates</button>
+                        <button class="btn btn-sm btn-primary" onclick="App.updatePrjFile()" title="Write current pressurization settings to a new PRJ file">&#128196; Update PRJ File</button>
+                    </div>
+                </div>
+
+                <!-- 3.1 Stair Pressurization -->
+                <div class="config-panel">
+                    <div class="panel-header" onclick="App.togglePanel(this)">
+                        <h3>Stair Pressurization</h3>
+                        <span class="toggle-icon">&#9660;</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="num-stairs">Number of Stairs</label>
+                                <input type="number" id="num-stairs" min="1" max="10" value="1" onchange="App.updateStairTabs()">
+                            </div>
+                        </div>
+                        <div id="stair-labels-row" class="form-row"></div>
+                        <div id="stair-tabs" class="sub-tabs"></div>
+                        <div id="stair-panels"></div>
+                    </div>
+                </div>
+
+                <!-- 3.2 Corridor Depressurization -->
+                <div class="config-panel">
+                    <div class="panel-header" onclick="App.togglePanel(this)">
+                        <h3>Corridor Depressurization</h3>
+                        <span class="toggle-icon">&#9660;</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="stair-pressurized-toggle">
+                            <input type="checkbox" id="corridor-depress-enabled" checked onchange="App.toggleCorridorDepress()">
+                            <label for="corridor-depress-enabled">Enable Corridor Depressurization</label>
+                        </div>
+                        <div id="corridor-depress-content">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="num-corridors">Number of Corridors</label>
+                                    <input type="number" id="num-corridors" min="1" max="10" value="1" onchange="App.updateCorridorTabs()">
+                                </div>
+                            </div>
+                            <div id="corridor-tabs" class="sub-tabs"></div>
+                            <div id="corridor-panels"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3.3 Floor Zone Depressurization -->
+                <div class="config-panel">
+                    <div class="panel-header" onclick="App.togglePanel(this)">
+                        <h3>Floor Zone Depressurization</h3>
+                        <span class="toggle-icon">&#9660;</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="stair-pressurized-toggle">
+                            <input type="checkbox" id="floor-depress-enabled" onchange="App.toggleFloorDepress()">
+                            <label for="floor-depress-enabled">Enable Floor Zone Depressurization</label>
+                        </div>
+                        <div id="floor-depress-content" class="stair-disabled-overlay">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="num-floors">Number of Floor Zone Groups</label>
+                                    <input type="number" id="num-floors" min="0" max="10" value="0" onchange="App.updateFloorTabs()">
+                                </div>
+                            </div>
+                            <div id="floor-tabs" class="sub-tabs"></div>
+                            <div id="floor-panels"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3.5 Roof Stair Depressurization -->
+                <div class="config-panel">
+                    <div class="panel-header" onclick="App.togglePanel(this)">
+                        <h3>Roof Stair Depressurization</h3>
+                        <span class="toggle-icon">&#9660;</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="bulk-scfm-tools" style="margin-bottom:0.75rem;">
+                            <div class="bulk-scfm-row">
+                                <div class="form-group">
+                                    <label>Apply Exhaust to All Pressurized Stairs</label>
+                                    <input type="number" id="roof-bulk-exhaust" value="0" min="0" step="100" style="width:120px;">
+                                </div>
+                                <button class="btn btn-sm" onclick="App.applyBulkRoofExhaust()">Apply</button>
+                            </div>
+                        </div>
+                        <p id="roof-info-msg" style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Non-pressurized stairs are greyed out automatically.</p>
+                        <div class="btn-row" style="margin-bottom:0.5rem;">
+                            <button class="btn btn-sm" onclick="App.autoPopulateRoof()">Auto-Populate by Zone Name</button>
+                        </div>
+                        <div class="table-container">
+                            <table id="tbl-roof">
+                                <thead><tr><th>Stair</th><th>Active</th><th>Zone ID</th><th>Level</th><th>Flow Rate (SCFM)</th><th style="display:none">AHS</th><th>Icon Type</th><th>Icon Col</th><th>Icon Row</th><th></th></tr></thead>
+                                <tbody id="roof-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3.4 Airflow Path Selection -->
+                <div class="config-panel">
+                    <div class="panel-header" onclick="App.togglePanel(this)">
+                        <h3>Airflow Path Selection</h3>
+                        <span class="toggle-icon">&#9660;</span>
+                    </div>
+                    <div class="panel-body">
+                        <div id="path-selection-panels"></div>
+                        <div id="corridor-path-group" class="form-group" style="margin-top:1rem;">
+                            <label for="corridor-path-name">Corridor Depressurization Path Element Name</label>
+                            <select id="corridor-path-name"></select>
+                        </div>
+                        <div id="floor-path-group" class="form-group" style="margin-top:0.75rem;">
+                            <label for="floor-path-name">Floor Depressurization Path Element Name</label>
+                            <select id="floor-path-name"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3.6 Simulation Level Selection -->
+                <div class="config-panel">
+                    <div class="panel-header" onclick="App.togglePanel(this)">
+                        <h3>Simulation Level Selection</h3>
+                        <span class="toggle-icon">&#9660;</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="stair-pressurized-toggle" style="margin-bottom:0.5rem;">
+                            <input type="checkbox" id="run-all-floors" checked onchange="App.toggleRunAllFloors()">
+                            <label for="run-all-floors">Run All Floors</label>
+                        </div>
+                        <div id="floor-selection-content" class="stair-disabled-overlay">
+                            <div class="form-group">
+                                <label for="floor-range-input">Floors to Run (e.g. "1-5, 8, 10-21")</label>
+                                <div class="input-with-btn">
+                                    <input type="text" id="floor-range-input" placeholder="e.g. 4-21 or 1-3, 5, 8-15" onchange="App.parseFloorRange()">
+                                    <button class="btn btn-sm" onclick="App.parseFloorRange()">Parse</button>
+                                </div>
+                            </div>
+                            <div id="floor-selection-badges" class="level-summary-grid" style="margin-top:0.5rem;"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab 4: Scenario Matrix -->
+            <section id="scenarios" class="tab-panel">
+                <h2>Scenario Matrix</h2>
+                <div class="btn-row" style="margin-bottom:1rem;">
+                    <button class="btn btn-primary" onclick="App.addScenario()">Add Scenario</button>
+                    <button class="btn" onclick="App.addStandardSet()">Add Standard Set</button>
+                    <button class="btn btn-danger" onclick="App.removeSelectedScenario()">Remove Selected</button>
+                </div>
+                <div class="table-container">
+                    <table id="tbl-scenarios">
+                        <thead><tr>
+                            <th><input type="checkbox" id="scenario-select-all"></th>
+                            <th>Scenario Name</th>
+                            <th>Base Model</th>
+                            <th>Temperature (F)</th>
+                            <th>Wind Speed (mph)</th>
+                            <th>Wind Direction (deg)</th>
+                        </tr></thead>
+                        <tbody id="scenario-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Tab 5: Run Analysis -->
+            <section id="run-analysis" class="tab-panel">
+                <h2>Run Analysis</h2>
+                <div id="run-summary" class="info-box">
+                    <p>Total runs: <strong id="total-runs">0</strong> (scenarios x fire floors)</p>
+                </div>
+
+                <div class="btn-row" style="margin-bottom:1rem;">
+                    <button class="btn" onclick="App.dryRun()">Dry Run (Generate PRJ Only)</button>
+                    <button class="btn" id="btn-check-all" onclick="App.checkAllFiles()" style="display:none">Check All Files</button>
+                    <button class="btn btn-primary" id="btn-start" onclick="App.startAnalysis()">Start Analysis</button>
+                    <button class="btn btn-danger" id="btn-cancel" onclick="App.cancelAnalysis()" disabled>Cancel</button>
+                </div>
+                <div id="progress-container" style="display:none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <p id="progress-label">Initializing...</p>
+                </div>
+                <div class="log-panel">
+                    <h3>Log Output</h3>
+                    <div id="log-output" class="log-output"></div>
+                </div>
+            </section>
+
+            <!-- Tab 6: Results & Reporting -->
+            <section id="results" class="tab-panel">
+                <h2>Results &amp; Reporting</h2>
+                <div class="filter-row">
+                    <label>Scenario: </label>
+                    <select id="result-scenario-filter" onchange="App.loadResults()"></select>
+                    <label style="margin-left:1rem;">View: </label>
+                    <select id="result-view-mode" onchange="App.switchResultView()">
+                        <option value="summary">Summary (Max across fire floors)</option>
+                        <option value="detailed">Per-Fire-Floor Detail</option>
+                        <option value="worst_case">Worst-Case Analysis</option>
+                    </select>
+                </div>
+
+                <!-- Fire floor selector (visible in detailed mode) -->
+                <div id="fire-floor-selector" class="filter-row" style="display:none; margin-top:0.5rem;">
+                    <label>Fire Floor: </label>
+                    <select id="result-fire-floor" onchange="App.loadDetailedFireFloor()"></select>
+                </div>
+
+                <div class="btn-row" style="margin:1rem 0;">
+                    <button class="btn" onclick="App.exportCSV()">Export CSV</button>
+                    <button class="btn" onclick="App.exportSummaryCSV()">Export Summary CSV</button>
+                    <button class="btn" onclick="App.exportDetailedCSV()">Export Detailed CSV</button>
+                    <button class="btn btn-primary" onclick="App.generateReport()">Generate Report</button>
+                </div>
+                <div id="criteria-config" class="info-box">
+                    <h3>Acceptance Criteria</h3>
+                    <!-- Stair Criteria Groups -->
+                    <div id="stair-criteria-groups">
+                        <h4 style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:0.5rem;">Stair Criteria Groups</h4>
+                        <div id="stair-criteria-list"></div>
+                        <button class="btn btn-sm" onclick="App.addStairCriteriaGroup()" style="margin-top:0.5rem;">+ Add Stair Group</button>
+                    </div>
+                    <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border);">
+                    <!-- Floor Depressurization Criteria -->
+                    <h4 style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:0.5rem;">Floor Depressurization</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="min-dp-floor">Min dP (in. w.c.)</label>
+                            <input type="number" id="min-dp-floor" value="0.05" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label for="max-dp-floor">Max dP (in. w.c.)</label>
+                            <input type="number" id="max-dp-floor" value="0.45" step="0.01">
+                        </div>
+                    </div>
+                    <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border);">
+                    <!-- Corridor Depressurization Criteria -->
+                    <h4 style="font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);margin-bottom:0.5rem;">Corridor Depressurization</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="min-dp-corr">Min dP (in. w.c.)</label>
+                            <input type="number" id="min-dp-corr" value="0.05" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label for="max-dp-corr">Max dP (in. w.c.)</label>
+                            <input type="number" id="max-dp-corr" value="0.45" step="0.01">
+                        </div>
+                    </div>
+                    <div class="btn-row" style="margin-top:0.75rem;">
+                        <button class="btn btn-sm btn-primary" onclick="App.applyHighlighting()">Apply Criteria</button>
+                    </div>
+                </div>
+
+                <!-- Level pass/fail summary bar (visible after analysis) -->
+                <div id="level-summary-bar" style="display:none; margin-bottom:1rem;">
+                    <h3>Level Pass/Fail Summary</h3>
+                    <div id="level-summary-content" class="level-summary-grid"></div>
+                </div>
+
+                <div class="table-container">
+                    <table id="tbl-results">
+                        <thead id="results-head"></thead>
+                        <tbody id="results-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div id="file-browser-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Browse</h3>
+                <button class="modal-close" onclick="App.closeBrowser()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-with-btn" style="margin-bottom:1rem;">
+                    <input type="text" id="browser-path-input" placeholder="Enter path..." onkeydown="if(event.key==='Enter')App.navigateBrowser()">
+                    <button class="btn btn-sm" onclick="App.navigateBrowser()">Go</button>
+                    <button class="btn btn-sm" onclick="App.browserUp()">Up</button>
+                </div>
+                <div id="browser-list" class="browser-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="App.selectBrowserPath()">Select</button>
+                <button class="btn" onclick="App.closeBrowser()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js?v=24"></script>
+</body>
+</html>
