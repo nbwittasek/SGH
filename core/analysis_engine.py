@@ -85,9 +85,11 @@ class AnalysisConfig:
     corridors: List[CorridorConfig]
     roof_configs: List[RoofConfig]
     floor_zones: List[FloorConfig] = field(default_factory=list)
+    selected_floors: Optional[List[int]] = None  # None = all floors
     acceptance_criteria: dict = field(default_factory=lambda: {
         "min_dp_inwc": 0.05,
         "max_dp_inwc": 0.45,
+        "max_dp_stair_inwc": 0.17,
     })
 
 
@@ -116,6 +118,13 @@ class AnalysisEngine:
         self._cancelled = False
         self._progress_callbacks: List[Callable] = []
         self.results: List[AnalysisResult] = []
+        self.prj_warnings: List[str] = []
+
+    def _log(self, message: str) -> None:
+        """Log a message via progress callbacks and store PRJ warnings."""
+        if "PRJ:" in message:
+            self.prj_warnings.append(message)
+        self._emit_progress(message)
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -128,16 +137,24 @@ class AnalysisEngine:
             cb({"message": message, "current": current, "total": total})
 
     def get_fire_floor_levels(self) -> List[int]:
-        """Get the list of fire floor level numbers from corridor AND floor zone configs."""
+        """Get the list of fire floor level numbers from corridor AND floor zone configs.
+        
+        If config.selected_floors is set, only those levels are included.
+        """
         levels = []
-        # Include both corridors and floor zones as depressurization targets
         depress_configs = list(self.config.corridors) + list(self.config.floor_zones)
         for cfg in depress_configs:
             for le in cfg.levels:
                 if le.get("flow_rate", 0) > 0 and le.get("zone_id", 0) != 0:
                     if le["level_num"] not in levels:
                         levels.append(le["level_num"])
-        return sorted(levels)
+        levels = sorted(levels)
+
+        # Filter by selected floors if specified
+        if self.config.selected_floors is not None:
+            levels = [l for l in levels if l in self.config.selected_floors]
+
+        return levels
 
     def count_total_runs(self) -> int:
         """Count total CONTAM runs needed."""
@@ -183,10 +200,38 @@ class AnalysisEngine:
         # Check fire floors exist
         fire_floors = self.get_fire_floor_levels()
         if not fire_floors:
-            errors.append(
-                "No fire floor levels found. Ensure corridor or floor zone configs "
-                "have non-zero flow rates."
+            # Provide more detail on why
+            depress_configs = list(self.config.corridors) + list(self.config.floor_zones)
+            total_depress = len(depress_configs)
+            has_flow_no_zone = sum(
+                1 for cfg in depress_configs
+                for le in cfg.levels
+                if le.get("flow_rate", 0) > 0 and le.get("zone_id", 0) == 0
             )
+            has_flow_and_zone = sum(
+                1 for cfg in depress_configs
+                for le in cfg.levels
+                if le.get("flow_rate", 0) > 0 and le.get("zone_id", 0) != 0
+            )
+            if has_flow_no_zone > 0:
+                errors.append(
+                    f"No fire floor levels found. {has_flow_no_zone} level(s) have "
+                    "SCFM values but zone_id=0 (not set). Use Auto-Populate by Zone "
+                    "Name to assign zones, or select zones manually in each row. "
+                    "Then re-save config."
+                )
+            elif total_depress == 0:
+                errors.append(
+                    "No fire floor levels found. Add corridor or floor zone "
+                    "depressurization configurations with non-zero flow rates."
+                )
+            else:
+                errors.append(
+                    "No fire floor levels found. Ensure corridor or floor zone "
+                    f"configs have non-zero flow rates AND zones selected. "
+                    f"(Found {total_depress} group(s), {has_flow_and_zone} "
+                    "levels with both flow and zone set.)"
+                )
 
         return errors
 
@@ -216,7 +261,7 @@ class AnalysisEngine:
                     + [{"label": f.label, "levels": f.levels} for f in self.config.floor_zones]
                 )
 
-                modified = build_modified_prj(
+                modified, prj_warnings = build_modified_prj(
                     base_lines=model.raw_lines,
                     temp_f=scenario.temp_f,
                     wind_mph=scenario.wind_mph,
@@ -242,6 +287,8 @@ class AnalysisEngine:
                     fire_floor_level_num=ff_level,
                     ahs_systems=model.ahs_systems,
                 )
+                for pw in prj_warnings:
+                    self._log(f"  PRJ: {pw}")
 
                 # Find level name for filename
                 level_name = f"Level{ff_level}"
@@ -353,7 +400,7 @@ class AnalysisEngine:
                     + [{"label": f.label, "levels": f.levels} for f in self.config.floor_zones]
                 )
 
-                modified = build_modified_prj(
+                modified, prj_warnings = build_modified_prj(
                     base_lines=model.raw_lines,
                     temp_f=scenario.temp_f,
                     wind_mph=scenario.wind_mph,
@@ -711,6 +758,7 @@ class AnalysisEngine:
         # Pass/fail summary per level
         min_dp = self.config.acceptance_criteria.get("min_dp_inwc", 0.05)
         max_dp = self.config.acceptance_criteria.get("max_dp_inwc", 0.45)
+        max_dp_stair = self.config.acceptance_criteria.get("max_dp_stair_inwc", 0.17)
         level_summary = {}
         for lvl_idx, lvl_name in enumerate(levels):
             pass_count = 0
@@ -718,11 +766,16 @@ class AnalysisEngine:
             total_checks = 0
             for ff_idx, ff_name in enumerate(fire_floor_names):
                 table_data = tables[ff_name]["data"]
-                for ci in range(1, len(tables[ff_name]["columns"])):
+                table_cols = tables[ff_name]["columns"]
+                for ci in range(1, len(table_cols)):
                     val = table_data[lvl_idx][ci]
                     if isinstance(val, (int, float)) and val != 0:
                         total_checks += 1
-                        if min_dp <= abs(val) <= max_dp:
+                        # Use stair max for S2V/V2C/EXT columns, floor max for others
+                        col_name = table_cols[ci]
+                        is_stair_col = col_name.endswith(("_S2V", "_V2C", "_EXT"))
+                        col_max = max_dp_stair if is_stair_col else max_dp
+                        if min_dp <= abs(val) <= col_max:
                             pass_count += 1
                         else:
                             fail_count += 1
