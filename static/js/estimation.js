@@ -10,10 +10,28 @@ const Est = (() => {
     let lastResult = null;
     let lastCriteria = {};  // Cache criteria at run time for result rendering
 
-    // Default stairwell field values
+    // Unit conversion constants (English ↔ SI)
+    const FT_TO_M = 0.3048;
+    const M_TO_FT = 1 / FT_TO_M;
+    const SQFT_TO_SQM = 0.092903;
+    const SQM_TO_SQFT = 1 / SQFT_TO_SQM;
+    const IN_TO_MM = 25.4;
+    const MM_TO_IN = 1 / IN_TO_MM;
+    const INWG_TO_PA = 249.089;
+    const LBF_TO_N = 4.44822;
+    const N_TO_LBF_C = 1 / LBF_TO_N;
+    const MPH_TO_MS = 0.44704;
+    const MS_TO_MPH = 1 / MPH_TO_MS;
+    const FPM_TO_MS = 0.00508;
+    const MS_TO_FPM = 1 / FPM_TO_MS;
+
+    function fToC(f) { return (f - 32) * 5 / 9; }
+    function cToF(c) { return c * 9 / 5 + 32; }
+
+    // Default stairwell field values (English units)
     const STAIR_DEFAULTS = {
-        area: 10, doorW: 1.1, doorH: 2.1, gap: 3, doors: 1,
-        bottom: 1, top: 0, extWalls: 1, extLen: 4,
+        area: 100, doorW: 3.5, doorH: 7.0, gap: 0.125, doors: 1,
+        bottom: 1, top: 0, extWalls: 1, extLen: 13,
     };
 
     // -----------------------------------------------------------------------
@@ -128,20 +146,20 @@ const Est = (() => {
                                onchange="Est.updateStairLabel(${i}, this.value)">
                     </div>
                     <div class="form-group">
-                        <label>Cross-section area (m&sup2;)</label>
-                        <input type="number" id="stair-${i}-area" value="${s.area}" step="0.5" min="3" max="200">
+                        <label>Cross-section area (sq ft)</label>
+                        <input type="number" id="stair-${i}-area" value="${s.area}" step="5" min="30" max="2000">
                     </div>
                     <div class="form-group">
-                        <label>Door width (m)</label>
-                        <input type="number" id="stair-${i}-door-w" value="${s.doorW}" step="0.05" min="0.8" max="1.5">
+                        <label>Door width (ft)</label>
+                        <input type="number" id="stair-${i}-door-w" value="${s.doorW}" step="0.25" min="2.5" max="5">
                     </div>
                     <div class="form-group">
-                        <label>Door height (m)</label>
-                        <input type="number" id="stair-${i}-door-h" value="${s.doorH}" step="0.05" min="1.8" max="2.5">
+                        <label>Door height (ft)</label>
+                        <input type="number" id="stair-${i}-door-h" value="${s.doorH}" step="0.25" min="6" max="8">
                     </div>
                     <div class="form-group">
-                        <label>Door gap (mm)</label>
-                        <input type="number" id="stair-${i}-gap" value="${s.gap}" step="0.5" min="1" max="10">
+                        <label>Door gap (in.)</label>
+                        <input type="number" id="stair-${i}-gap" value="${s.gap}" step="0.0625" min="0.0625" max="0.5">
                     </div>
                     <div class="form-group">
                         <label>Doors per floor</label>
@@ -160,12 +178,12 @@ const Est = (() => {
                         <input type="number" id="stair-${i}-ext-walls" value="${s.extWalls}" min="0" max="4">
                     </div>
                     <div class="form-group">
-                        <label>Ext wall length (m)</label>
-                        <input type="number" id="stair-${i}-ext-len" value="${s.extLen}" step="0.5" min="0" max="20">
+                        <label>Ext wall length (ft)</label>
+                        <input type="number" id="stair-${i}-ext-len" value="${s.extLen}" step="0.5" min="0" max="65">
                     </div>
                     <div class="form-group">
-                        <label>Perimeter (m)</label>
-                        <input type="number" id="stair-${i}-perim" value="${(s.perim || 6 * Math.sqrt(s.area / 2)).toFixed(1)}" step="0.5" min="4" max="80">
+                        <label>Perimeter (ft)</label>
+                        <input type="number" id="stair-${i}-perim" value="${(s.perim || 6 * Math.sqrt(s.area / 2) * FT_TO_M * M_TO_FT).toFixed(1)}" step="1" min="12" max="260">
                     </div>
                 </div>
             </div>`;
@@ -193,53 +211,63 @@ const Est = (() => {
 
     function collectInputs() {
         const totalFloors = intVal('est-n-floors-above') + intVal('est-n-floors-below');
+        // Convert stairwell values from English to SI for the backend
         const stairData = stairwells.map((s, i) => ({
             label: domVal(`stair-${i}-label`) || s.label,
-            cross_section_area: numVal(`stair-${i}-area`),
-            // Use explicit perimeter input; fallback to 2:1 rectangle approximation
-            cross_section_perimeter: numVal(`stair-${i}-perim`) || 6 * Math.sqrt(numVal(`stair-${i}-area`) / 2),
-            door_width: numVal(`stair-${i}-door-w`),
-            door_height: numVal(`stair-${i}-door-h`),
-            door_gap_mm: numVal(`stair-${i}-gap`),
+            cross_section_area: numVal(`stair-${i}-area`) * SQFT_TO_SQM,
+            cross_section_perimeter: (numVal(`stair-${i}-perim`) || 6 * Math.sqrt(numVal(`stair-${i}-area`) / 2)) * FT_TO_M,
+            door_width: numVal(`stair-${i}-door-w`) * FT_TO_M,
+            door_height: numVal(`stair-${i}-door-h`) * FT_TO_M,
+            door_gap_mm: numVal(`stair-${i}-gap`) * IN_TO_MM,
             doors_per_floor: intVal(`stair-${i}-doors`),
             serves_bottom: intVal(`stair-${i}-bottom`),
             serves_top: intVal(`stair-${i}-top`) || totalFloors,
             n_exterior_walls: intVal(`stair-${i}-ext-walls`),
-            exterior_wall_length: numVal(`stair-${i}-ext-len`),
+            exterior_wall_length: numVal(`stair-${i}-ext-len`) * FT_TO_M,
         }));
 
-        const criteria = {
-            min_dp_closed: numVal('est-min-dp'),
-            max_dp_closed: numVal('est-max-dp'),
-            min_door_velocity: numVal('est-min-velocity'),
-            max_door_force: numVal('est-max-force'),
-            floor_exhaust_dp: numVal('est-exhaust-dp'),
-            door_closer_force: numVal('est-closer-force'),
+        // Convert criteria from English to SI
+        const criteriaEnglish = {
+            min_dp_inwg: numVal('est-min-dp'),
+            max_dp_inwg: numVal('est-max-dp'),
+            min_velocity_fpm: numVal('est-min-velocity'),
+            max_force_lbf: numVal('est-max-force'),
+            exhaust_dp_inwg: numVal('est-exhaust-dp'),
+            closer_force_lbf: numVal('est-closer-force'),
         };
-        lastCriteria = criteria;
+        lastCriteria = criteriaEnglish;
+
+        const criteria = {
+            min_dp_closed: criteriaEnglish.min_dp_inwg * INWG_TO_PA,
+            max_dp_closed: criteriaEnglish.max_dp_inwg * INWG_TO_PA,
+            min_door_velocity: criteriaEnglish.min_velocity_fpm * FPM_TO_MS,
+            max_door_force: criteriaEnglish.max_force_lbf * LBF_TO_N,
+            floor_exhaust_dp: criteriaEnglish.exhaust_dp_inwg * INWG_TO_PA,
+            door_closer_force: criteriaEnglish.closer_force_lbf * LBF_TO_N,
+        };
 
         return {
             building: {
                 n_floors_above: intVal('est-n-floors-above'),
                 n_floors_below: intVal('est-n-floors-below'),
-                floor_height: numVal('est-floor-height'),
-                building_perimeter: numVal('est-bldg-perimeter'),
-                floor_area: numVal('est-floor-area'),
+                floor_height: numVal('est-floor-height') * FT_TO_M,
+                building_perimeter: numVal('est-bldg-perimeter') * FT_TO_M,
+                floor_area: numVal('est-floor-area') * SQFT_TO_SQM,
                 wall_construction: domVal('est-wall-construction'),
             },
             stairwells: stairData,
             elevators: {
                 n_shafts: intVal('est-elev-n'),
-                shaft_area: numVal('est-elev-area'),
+                shaft_area: numVal('est-elev-area') * SQFT_TO_SQM,
                 door_type: domVal('est-elev-door-type'),
-                vent_area: numVal('est-elev-vent'),
+                vent_area: numVal('est-elev-vent') * SQFT_TO_SQM,
             },
             conditions: {
-                T_outdoor_winter: numVal('est-t-winter'),
-                T_outdoor_summer: numVal('est-t-summer'),
-                T_indoor: numVal('est-t-indoor'),
-                T_fire: numVal('est-t-fire'),
-                wind_speed: numVal('est-wind-speed'),
+                T_outdoor_winter: fToC(numVal('est-t-winter')),
+                T_outdoor_summer: fToC(numVal('est-t-summer')),
+                T_indoor: fToC(numVal('est-t-indoor')),
+                T_fire: fToC(numVal('est-t-fire')),
+                wind_speed: numVal('est-wind-speed') * MPH_TO_MS,
                 wind_direction: numVal('est-wind-dir'),
                 P_atm: numVal('est-p-atm'),
                 n_open_doors: intVal('est-n-open-doors'),
@@ -325,11 +353,12 @@ const Est = (() => {
         if (tracesDiv) tracesDiv.style.display = 'none';
     }
 
-    // Unit conversion helpers (SI → Imperial)
+    // Unit conversion helpers (SI → English)
     function paToInwg(pa) { return pa / 249.089; }
     function nToLbf(n) { return n * 0.224809; }
-    function fmtDP(pa) { return `${pa.toFixed(2)} Pa (${paToInwg(pa).toFixed(4)} in.&nbsp;w.g.)`; }
-    function fmtForce(n) { return `${n.toFixed(1)} N (${nToLbf(n).toFixed(1)} lbf)`; }
+    function mToFt(m) { return m * M_TO_FT; }
+    function fmtDP(pa) { return `${paToInwg(pa).toFixed(4)} in.&nbsp;w.g. (${pa.toFixed(2)} Pa)`; }
+    function fmtForce(n) { return `${nToLbf(n).toFixed(1)} lbf (${n.toFixed(1)} N)`; }
 
     function renderSystemSummary(data) {
         if (!data.stair_results) return;
@@ -339,11 +368,11 @@ const Est = (() => {
 
         for (const sr of data.stair_results) {
             html += `<tr><td><strong>${esc(sr.label)} Supply (all closed)</strong></td>
-                     <td>${sr.q_supply_closed.toFixed(4)} m&sup3;/s (${sr.q_supply_closed_cfm} CFM)</td></tr>`;
+                     <td>${sr.q_supply_closed_cfm} CFM</td></tr>`;
             html += `<tr><td><strong>${esc(sr.label)} Supply (doors open)</strong></td>
-                     <td>${sr.q_supply_open.toFixed(4)} m&sup3;/s (${sr.q_supply_open_cfm} CFM)</td></tr>`;
+                     <td>${sr.q_supply_open_cfm} CFM</td></tr>`;
             html += `<tr class="highlight-row"><td><strong>${esc(sr.label)} DESIGN Supply</strong></td>
-                     <td><strong>${sr.q_supply_design.toFixed(4)} m&sup3;/s (${sr.q_supply_design_cfm} CFM)</strong></td></tr>`;
+                     <td><strong>${sr.q_supply_design_cfm} CFM</strong></td></tr>`;
             html += `<tr><td>${esc(sr.label)} Critical Floor (min dP)</td><td>${esc(sr.critical_floor_min_dp)}</td></tr>`;
             html += `<tr><td>${esc(sr.label)} Critical Floor (max force)</td><td>${esc(sr.critical_floor_max_force)}</td></tr>`;
         }
@@ -352,9 +381,9 @@ const Est = (() => {
             const er = data.exhaust_result;
             html += '<tr><td colspan="2" style="border-top:2px solid #2e3a4e;"></td></tr>';
             html += `<tr class="highlight-row"><td><strong>Fire Floor Exhaust (ambient)</strong></td>
-                     <td><strong>${er.q_exhaust_total.toFixed(4)} m&sup3;/s (${er.q_exhaust_total_cfm} CFM)</strong></td></tr>`;
+                     <td><strong>${er.q_exhaust_total_cfm} CFM</strong></td></tr>`;
         }
-        html += `<tr><td>NPP Height</td><td>${data.npp_height} m above grade</td></tr>`;
+        html += `<tr><td>NPP Height</td><td>${mToFt(data.npp_height).toFixed(1)} ft above grade</td></tr>`;
 
         html += '</tbody></table>';
         document.getElementById('est-summary-content').innerHTML = html;
@@ -371,15 +400,16 @@ const Est = (() => {
             html += `<h4>${esc(sr.label)}</h4>`;
             html += `<table class="est-table results-table">
                 <thead><tr>
-                    <th>Floor</th><th>Height (m)</th>
-                    <th>&Delta;P_stack<br>(Pa / in.w.g.)</th>
-                    <th>&Delta;P_wind<br>(Pa / in.w.g.)</th>
-                    <th>&Delta;P_net<br>(Pa / in.w.g.)</th>
+                    <th>Floor</th><th>Height (ft)</th>
+                    <th>&Delta;P_stack<br>(in.w.g.)</th>
+                    <th>&Delta;P_wind<br>(in.w.g.)</th>
+                    <th>&Delta;P_net<br>(in.w.g.)</th>
                     <th>Q_leak (CFM)</th>
                     <th>Q_open (CFM)</th>
-                    <th>F_total<br>(N / lbf)</th><th>Status</th>
+                    <th>F_total (lbf)</th><th>Status</th>
                 </tr></thead><tbody>`;
 
+            const maxForceLbf = (lastCriteria.max_force_lbf || 30);
             for (const fr of (sr.floor_results || [])) {
                 const cls = fr.status === 'PASS' ? 'pass' : 'fail';
                 const reasons = fr.failure_reasons || [];
@@ -390,13 +420,13 @@ const Est = (() => {
                 const fLbf = nToLbf(fr.f_total).toFixed(1);
                 html += `<tr>
                     <td class="level-cell">${esc(fr.floor_label)}</td>
-                    <td>${fr.height.toFixed(1)}</td>
-                    <td>${fr.dp_stack.toFixed(2)}<br><small>${dpStackInwg}</small></td>
-                    <td>${fr.dp_wind.toFixed(2)}<br><small>${dpWindInwg}</small></td>
-                    <td class="${cls}">${fr.dp_net.toFixed(2)}<br><small>${dpNetInwg}</small></td>
+                    <td>${mToFt(fr.height).toFixed(1)}</td>
+                    <td>${dpStackInwg}</td>
+                    <td>${dpWindInwg}</td>
+                    <td class="${cls}">${dpNetInwg}</td>
                     <td>${fr.q_leak_closed_cfm.toFixed(0)}</td>
                     <td>${fr.q_flow_open_cfm > 0 ? fr.q_flow_open_cfm.toFixed(0) : '-'}</td>
-                    <td${fr.f_total > maxForce ? ' class="fail"' : ''}>${fr.f_total.toFixed(1)}<br><small>${fLbf}</small></td>
+                    <td${nToLbf(fr.f_total) > maxForceLbf ? ' class="fail"' : ''}>${fLbf}</td>
                     <td class="${cls}"${title}>${fr.status}</td>
                 </tr>`;
             }
@@ -413,7 +443,7 @@ const Est = (() => {
         const er = data.exhaust_result;
 
         let html = `<table class="est-table">
-            <thead><tr><th>Component</th><th>Flow (m&sup3;/s)</th><th>Flow (CFM)</th><th>% of Total</th></tr></thead>
+            <thead><tr><th>Component</th><th>Flow (CFM)</th><th>% of Total</th></tr></thead>
             <tbody>`;
         const total = er.q_exhaust_total || 1;
         const items = [
@@ -425,10 +455,9 @@ const Est = (() => {
         for (const [name, flowVal, cfm] of items) {
             const safeVal = flowVal || 0;
             const pct = (safeVal / total * 100).toFixed(1);
-            html += `<tr><td>${name}</td><td>${safeVal.toFixed(4)}</td><td>${cfm || 0}</td><td>${pct}%</td></tr>`;
+            html += `<tr><td>${name}</td><td>${cfm || 0}</td><td>${pct}%</td></tr>`;
         }
         html += `<tr class="highlight-row"><td><strong>TOTAL (EQ-25)</strong></td>
-                 <td><strong>${er.q_exhaust_total.toFixed(4)}</strong></td>
                  <td><strong>${er.q_exhaust_total_cfm}</strong></td><td>100%</td></tr>`;
         html += '</tbody></table>';
 
@@ -488,15 +517,11 @@ const Est = (() => {
         div.style.display = 'block';
 
         const cr = lastCriteria;
-        const minDp = cr.min_dp_closed || 12.5;
-        const maxDp = cr.max_dp_closed || 87;
-        const minDpInwg = paToInwg(minDp).toFixed(2);
-        const maxDpInwg = paToInwg(maxDp).toFixed(2);
-        const exhDp = cr.floor_exhaust_dp || 25;
-        const exhDpInwg = paToInwg(exhDp).toFixed(2);
-        const maxForce = cr.max_door_force || 133;
-        const maxForceLbf = nToLbf(maxForce).toFixed(0);
-        const minVel = cr.min_door_velocity || 1.0;
+        const minDpInwg = (cr.min_dp_inwg || 0.05).toFixed(2);
+        const maxDpInwg = (cr.max_dp_inwg || 0.35).toFixed(2);
+        const exhDpInwg = (cr.exhaust_dp_inwg || 0.08).toFixed(2);
+        const maxForceLbf = (cr.max_force_lbf || 30).toFixed(0);
+        const minVelFpm = (cr.min_velocity_fpm || 200).toFixed(0);
 
         const html = `
         <div class="meth-intro">
@@ -527,26 +552,26 @@ const Est = (() => {
                 <tbody>
                     <tr><td>Minimum stairwell-to-corridor pressure (all doors closed)</td>
                         <td>&Delta;P<sub>min</sub></td>
-                        <td>${minDp} Pa (${minDpInwg} in.&nbsp;w.g.)</td>
+                        <td>${minDpInwg} in.&nbsp;w.g.</td>
                         <td>IBC 909.20.5.1</td></tr>
                     <tr><td>Maximum stairwell-to-corridor pressure (all doors closed)</td>
                         <td>&Delta;P<sub>max</sub></td>
-                        <td>${maxDp} Pa (${maxDpInwg} in.&nbsp;w.g.)</td>
+                        <td>${maxDpInwg} in.&nbsp;w.g.</td>
                         <td>NFPA 92 &sect;4.4.2.1</td></tr>
                     <tr><td>Minimum air velocity through open doors (sprinklered)</td>
                         <td>V<sub>min</sub></td>
-                        <td>${minVel} m/s</td>
+                        <td>${minVelFpm} fpm</td>
                         <td>IBC 909.20.5.2</td></tr>
                     <tr><td>Maximum door-opening force</td>
                         <td>F<sub>max</sub></td>
-                        <td>${maxForce} N (${maxForceLbf} lbf)</td>
+                        <td>${maxForceLbf} lbf</td>
                         <td>IBC 1010.1.3</td></tr>
                 </tbody>
             </table>
             <p class="meth-prose">
                 When fire-floor exhaust (depressurization) is provided, an additional pressure
-                differential of &Delta;P<sub>exhaust</sub> = ${exhDp} Pa
-                (${exhDpInwg} in.&nbsp;w.g.) is maintained across the fire floor per IBC 909.20.6.
+                differential of &Delta;P<sub>exhaust</sub> = ${exhDpInwg} in.&nbsp;w.g.
+                is maintained across the fire floor per IBC 909.20.6.
                 The calculation determines both the <strong>minimum stairwell supply air</strong>
                 (for fan sizing) and the <strong>minimum fire-floor exhaust rate</strong>.
             </p>
@@ -748,8 +773,8 @@ const Est = (() => {
                 <span class="meth-eq-label">EQ-12</span>
                 <div class="meth-eq-formula">Q<sub>open</sub> = V<sub>min</sub> &middot; w<sub>d</sub> &middot; h<sub>d</sub></div>
                 <div class="meth-eq-where">
-                    where V<sub>min</sub> = ${minVel} m/s for sprinklered buildings
-                    (1.7 m/s if non-sprinklered). This flow rate per open door is added directly
+                    where V<sub>min</sub> = ${minVelFpm} fpm for sprinklered buildings
+                    (335 fpm if non-sprinklered). This flow rate per open door is added directly
                     to the supply requirement.
                 </div>
             </div>
@@ -770,7 +795,7 @@ const Est = (() => {
                 <div class="meth-eq-where">
                     where <em>d</em> is the handle-to-latch distance. The term
                     w<sub>d</sub> / (w<sub>d</sub> &minus; d) is the lever-arm ratio.
-                    This must satisfy F<sub>total</sub> &le; ${maxForce} N (${maxForceLbf} lbf).
+                    This must satisfy F<sub>total</sub> &le; ${maxForceLbf} lbf.
                 </div>
             </div>
             <p class="meth-prose">
@@ -826,8 +851,8 @@ const Est = (() => {
             <p class="meth-prose">
                 Per ASHRAE, the fire floor exhaust is calculated at <strong>ambient
                 temperature</strong>, targeting a depressurization of
-                <strong>0.08&nbsp;in.&nbsp;w.g.</strong> (&asymp;&nbsp;20&nbsp;Pa) on the
-                fire floor (&Delta;P<sub>exhaust</sub> = ${exhDp} Pa). The exhaust
+                <strong>0.08&nbsp;in.&nbsp;w.g.</strong> on the
+                fire floor (&Delta;P<sub>exhaust</sub> = ${exhDpInwg} in.&nbsp;w.g.). The exhaust
                 rate equals the sum of all leakage inflows entering the fire floor.
                 No design fire, thermal expansion, or elevated-temperature correction
                 is applied.
@@ -1109,6 +1134,28 @@ const Est = (() => {
                 ? ' &mdash; ' + details.map(d => esc(d)).join('; ')
                 : '';
             statusSpan.innerHTML = `Values loaded from <strong>${esc(file.name)}</strong>${detailText}`;
+
+            // Show cross-tool checkbox
+            const crossLabel = document.getElementById('est-also-contam-label');
+            if (crossLabel) crossLabel.style.display = '';
+
+            // Cross-tool: also upload to CONTAM tool if checkbox is checked
+            const alsoContam = document.getElementById('est-also-contam');
+            if (alsoContam && alsoContam.checked) {
+                try {
+                    const formData2 = new FormData();
+                    formData2.append('file', file);
+                    const resp2 = await fetch('/api/model/parse-upload', {
+                        method: 'POST',
+                        body: formData2,
+                    });
+                    if (resp2.ok) {
+                        const contamData = await resp2.json();
+                        contamData.filename = file.name;
+                        localStorage.setItem('contam_prj_pending', JSON.stringify(contamData));
+                    }
+                } catch (_) {}
+            }
         } catch (e) {
             console.error('[EST] importPrjFile error:', e);
             banner.classList.remove('loading');
@@ -1125,44 +1172,44 @@ const Est = (() => {
         console.log('[EST] applyPrjData — building:', b, 'conditions:', c, 'elevators:', e,
                      'stairwells:', (data.stairwells || []).length);
 
-        // --- Building geometry ---
+        // --- Building geometry (backend returns metric → convert to English) ---
         setFormVal('est-n-floors-above', b.n_floors_above);
         setFormVal('est-n-floors-below', b.n_floors_below);
-        setFormVal('est-floor-height', b.floor_height);
-        setFormVal('est-bldg-perimeter', b.building_perimeter);
-        setFormVal('est-floor-area', b.floor_area);
+        if (b.floor_height) setFormVal('est-floor-height', (b.floor_height * M_TO_FT).toFixed(1));
+        if (b.building_perimeter) setFormVal('est-bldg-perimeter', Math.round(b.building_perimeter * M_TO_FT));
+        if (b.floor_area) setFormVal('est-floor-area', Math.round(b.floor_area * SQM_TO_SQFT));
 
-        // --- Design conditions ---
-        if (c.T_outdoor_winter !== undefined) setFormVal('est-t-winter', c.T_outdoor_winter);
-        if (c.wind_speed !== undefined) setFormVal('est-wind-speed', c.wind_speed);
+        // --- Design conditions (°C → °F, m/s → mph) ---
+        if (c.T_outdoor_winter !== undefined) setFormVal('est-t-winter', Math.round(cToF(c.T_outdoor_winter)));
+        if (c.wind_speed !== undefined) setFormVal('est-wind-speed', Math.round(c.wind_speed * MS_TO_MPH));
         if (c.wind_direction !== undefined) setFormVal('est-wind-dir', c.wind_direction);
 
-        // --- Elevators ---
+        // --- Elevators (m² → sq ft) ---
         if (e.n_shafts !== undefined) setFormVal('est-elev-n', e.n_shafts);
-        if (e.shaft_area !== undefined) setFormVal('est-elev-area', e.shaft_area);
+        if (e.shaft_area !== undefined) setFormVal('est-elev-area', Math.round(e.shaft_area * SQM_TO_SQFT));
 
         // --- Fire floor (default to mid-building) ---
         const totalFloors = (b.n_floors_above || 10) + (b.n_floors_below || 0);
         setFormVal('est-fire-floor', Math.max(1, Math.floor(totalFloors / 2)));
 
-        // --- Stairwells ---
+        // --- Stairwells (convert metric → English) ---
         const stairData = data.stairwells || [];
         if (stairData.length > 0) {
-            // Replace the stairwell array and re-render
             stairwells = [];
             for (const s of stairData) {
+                const areaM2 = s.area || (STAIR_DEFAULTS.area * SQFT_TO_SQM);
                 stairwells.push({
                     label: s.label || `Stair ${String.fromCharCode(65 + stairwells.length)}`,
-                    area: s.area || STAIR_DEFAULTS.area,
-                    doorW: s.doorW || STAIR_DEFAULTS.doorW,
-                    doorH: s.doorH || STAIR_DEFAULTS.doorH,
-                    gap: s.gap || STAIR_DEFAULTS.gap,
+                    area: Math.round((s.area || (STAIR_DEFAULTS.area * SQFT_TO_SQM)) * SQM_TO_SQFT),
+                    doorW: parseFloat(((s.doorW || (STAIR_DEFAULTS.doorW * FT_TO_M)) * M_TO_FT).toFixed(2)),
+                    doorH: parseFloat(((s.doorH || (STAIR_DEFAULTS.doorH * FT_TO_M)) * M_TO_FT).toFixed(2)),
+                    gap: parseFloat(((s.gap || (STAIR_DEFAULTS.gap * IN_TO_MM)) * MM_TO_IN).toFixed(4)),
                     doors: s.doors || STAIR_DEFAULTS.doors,
                     bottom: s.bottom || 1,
                     top: s.top || totalFloors,
                     extWalls: s.extWalls ?? STAIR_DEFAULTS.extWalls,
-                    extLen: s.extLen || STAIR_DEFAULTS.extLen,
-                    perim: s.perim || 6 * Math.sqrt((s.area || STAIR_DEFAULTS.area) / 2),
+                    extLen: parseFloat(((s.extLen || (STAIR_DEFAULTS.extLen * FT_TO_M)) * M_TO_FT).toFixed(1)),
+                    perim: parseFloat(((s.perim || 6 * Math.sqrt(areaM2 / 2)) * M_TO_FT).toFixed(1)),
                 });
             }
             renderStairwells();

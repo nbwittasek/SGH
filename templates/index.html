@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CONTAM Pressurization Tool — SGH</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=24">
+    <link rel="stylesheet" href="/static/css/style.css?v=25">
+    <link rel="stylesheet" href="/static/css/estimation.css?v=8">
 </head>
 <body>
     <div class="app-layout">
@@ -84,8 +85,26 @@
             <!-- Tab 2: Model Import & Parsing -->
             <section id="model-import" class="tab-panel">
                 <h2>Model Import &amp; Parsing</h2>
+
+                <!-- Drop zone for PRJ files -->
+                <div id="contam-drop-banner" class="est-drop-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="12" y1="18" x2="12" y2="12"></line>
+                        <line x1="9" y1="15" x2="12" y2="12"></line>
+                        <line x1="15" y1="15" x2="12" y2="12"></line>
+                    </svg>
+                    <span id="contam-drop-status">Drop a <strong>.prj</strong> file here or click to browse</span>
+                    <input type="file" id="contam-prj-input" accept=".prj" style="display:none">
+                    <label id="contam-also-estimation-label" style="display:none; margin-left:auto; font-size:0.8rem; cursor:pointer;">
+                        <input type="checkbox" id="contam-also-estimation" checked> Also apply to Estimation Tool
+                    </label>
+                </div>
+
                 <div class="form-group">
-                    <label>Import CONTAM PRJ File</label>
+                    <label>Or enter file path manually</label>
                     <div class="input-with-btn">
                         <input type="text" id="prj-filepath" placeholder="Enter full path to .prj file">
                         <button class="btn btn-sm" onclick="App.browseFolder('prj-filepath')">Browse</button>
@@ -474,6 +493,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=24"></script>
+    <script src="/static/js/app.js?v=25"></script>
 </body>
 </html>

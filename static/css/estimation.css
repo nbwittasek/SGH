@@ -69,6 +69,11 @@
     background: #fdedec;
 }
 
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

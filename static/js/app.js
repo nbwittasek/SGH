@@ -2700,13 +2700,199 @@ const App = (() => {
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // CONTAM PRJ Drop Zone (drag-and-drop model import)
+    // ---------------------------------------------------------------------------
+    function initContamDropZone() {
+        const banner = document.getElementById('contam-drop-banner');
+        const fileInput = document.getElementById('contam-prj-input');
+        if (!banner || !fileInput) return;
+
+        // Click banner to browse
+        banner.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                importPrjUpload(fileInput.files[0]);
+                fileInput.value = '';
+            }
+        });
+
+        // Banner drag events
+        banner.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); banner.classList.add('drag-over'); });
+        banner.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); banner.classList.remove('drag-over'); });
+        banner.addEventListener('drop', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            banner.classList.remove('drag-over');
+            const f = e.dataTransfer.files;
+            if (f.length > 0 && f[0].name.toLowerCase().endsWith('.prj')) importPrjUpload(f[0]);
+        });
+
+        // Page-level drag/drop (so user can drop anywhere on Tab 2)
+        document.body.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            banner.classList.add('drag-over');
+        });
+        document.body.addEventListener('dragleave', (e) => {
+            if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+                banner.classList.remove('drag-over');
+            }
+        });
+        document.body.addEventListener('drop', (e) => {
+            e.preventDefault();
+            banner.classList.remove('drag-over');
+            const f = e.dataTransfer.files;
+            if (f.length > 0 && f[0].name.toLowerCase().endsWith('.prj')) {
+                importPrjUpload(f[0]);
+            }
+        });
+    }
+
+    async function importPrjUpload(file) {
+        const banner = document.getElementById('contam-drop-banner');
+        const statusSpan = document.getElementById('contam-drop-status');
+
+        banner.classList.remove('success', 'error');
+        banner.classList.add('loading');
+        statusSpan.innerHTML = `Parsing <strong>${file.name}</strong>...`;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const resp = await fetch('/api/model/parse-upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                throw new Error(err.detail || resp.statusText);
+            }
+
+            const data = await resp.json();
+            currentModelId = data.model_id;
+
+            // Update filepath field and badges
+            document.getElementById('prj-filepath').value = data.filepath;
+            document.getElementById('badge-levels').textContent = 'Levels: ' + data.num_levels;
+            document.getElementById('badge-zones').textContent = 'Zones: ' + data.num_zones;
+            document.getElementById('badge-elements').textContent = 'Elements: ' + data.num_flow_elements;
+            document.getElementById('badge-paths').textContent = 'Paths: ' + data.num_airflow_paths;
+            document.getElementById('badge-ahs').textContent = 'AHS: ' + data.num_ahs;
+            document.getElementById('parsed-data').style.display = 'block';
+
+            showStatus('parse-status', `Parsed successfully: ${data.project_name} (${data.version})`, 'success');
+
+            // Load all data
+            await Promise.all([loadLevels(), loadZones(), loadAHS(), loadElements(), loadPaths()]);
+            populateDropdowns();
+
+            // Auto-configure
+            try {
+                lastSuggestions = await api('GET', `/api/model/${currentModelId}/auto-configure`);
+                if (lastSuggestions && lastSuggestions.confidence !== 'low') {
+                    applySuggestions();
+                    showAutoConfigBanner(lastSuggestions);
+                    switchToTab('pressurization');
+                } else {
+                    showSuggestionsBanner(lastSuggestions);
+                }
+            } catch (e2) {
+                try {
+                    lastSuggestions = await api('GET', `/api/model/${currentModelId}/suggestions`);
+                    showSuggestionsBanner(lastSuggestions);
+                } catch (_) {}
+            }
+
+            banner.classList.remove('loading');
+            banner.classList.add('success');
+            statusSpan.innerHTML = `Loaded <strong>${file.name}</strong> &mdash; ${data.num_levels} levels, ${data.num_zones} zones`;
+
+            // Show cross-tool checkbox
+            const crossLabel = document.getElementById('contam-also-estimation-label');
+            if (crossLabel) crossLabel.style.display = '';
+
+            // Cross-tool: also send to estimation tool if checkbox is checked
+            const alsoEst = document.getElementById('contam-also-estimation');
+            if (alsoEst && alsoEst.checked) {
+                try {
+                    // Upload to estimation extract endpoint too
+                    const formData2 = new FormData();
+                    formData2.append('file', file);
+                    const resp2 = await fetch('/api/estimation/extract-from-prj', {
+                        method: 'POST',
+                        body: formData2,
+                    });
+                    if (resp2.ok) {
+                        const estData = await resp2.json();
+                        estData.filename = file.name;
+                        localStorage.setItem('est_prj_pending', JSON.stringify(estData));
+                    }
+                } catch (_) {}
+            }
+        } catch (e) {
+            banner.classList.remove('loading');
+            banner.classList.add('error');
+            statusSpan.textContent = 'Error: ' + e.message;
+        }
+    }
+
+    // Check if the Estimation tool forwarded a parsed PRJ for us
+    async function checkEstimationPrjForward() {
+        try {
+            const raw = localStorage.getItem('contam_prj_pending');
+            if (!raw) return;
+            localStorage.removeItem('contam_prj_pending');
+            const data = JSON.parse(raw);
+
+            // The data includes model_id, filepath, etc. from /api/model/parse-upload
+            if (!data.model_id) return;
+
+            currentModelId = data.model_id;
+            document.getElementById('prj-filepath').value = data.filepath || '';
+            document.getElementById('badge-levels').textContent = 'Levels: ' + (data.num_levels || 0);
+            document.getElementById('badge-zones').textContent = 'Zones: ' + (data.num_zones || 0);
+            document.getElementById('badge-elements').textContent = 'Elements: ' + (data.num_flow_elements || 0);
+            document.getElementById('badge-paths').textContent = 'Paths: ' + (data.num_airflow_paths || 0);
+            document.getElementById('badge-ahs').textContent = 'AHS: ' + (data.num_ahs || 0);
+            document.getElementById('parsed-data').style.display = 'block';
+
+            showStatus('parse-status', `Model loaded from Estimation Tool: ${data.project_name || data.filename}`, 'success');
+
+            await Promise.all([loadLevels(), loadZones(), loadAHS(), loadElements(), loadPaths()]);
+            populateDropdowns();
+
+            try {
+                lastSuggestions = await api('GET', `/api/model/${currentModelId}/auto-configure`);
+                if (lastSuggestions && lastSuggestions.confidence !== 'low') {
+                    applySuggestions();
+                    showAutoConfigBanner(lastSuggestions);
+                }
+            } catch (_) {}
+
+            const banner = document.getElementById('contam-drop-banner');
+            const statusSpan = document.getElementById('contam-drop-status');
+            if (banner && statusSpan) {
+                banner.classList.add('success');
+                statusSpan.innerHTML = `Model loaded from <strong>Estimation Tool</strong> (${data.filename || 'PRJ file'})`;
+            }
+        } catch (e) {
+            console.warn('[App] Failed to load forwarded PRJ:', e);
+        }
+    }
+
     function init() {
         initTabs();
         initScenarioSelectAll();
+        initContamDropZone();
         loadRecentProjects();
         loadResultsScenarios();
         initStairCriteriaGroups();
         checkEstimationTransfer();
+        checkEstimationPrjForward();
     }
 
     document.addEventListener('DOMContentLoaded', init);
@@ -2916,5 +3102,6 @@ const App = (() => {
         browserUp,
         selectBrowserPath,
         closeBrowser,
+        importPrjUpload,
     };
 })();

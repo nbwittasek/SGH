@@ -55,6 +55,9 @@
                 </svg>
                 <span id="est-drop-status">Drop a <strong>.prj</strong> file anywhere to auto-fill from CONTAM model</span>
                 <input type="file" id="est-prj-input" accept=".prj" style="display:none">
+                <label id="est-also-contam-label" style="display:none; margin-left:auto; font-size:0.8rem; cursor:pointer;">
+                    <input type="checkbox" id="est-also-contam" checked> Also parse in CONTAM Tool
+                </label>
             </div>
 
             <!-- Tab 1: Building Inputs -->
@@ -71,16 +74,16 @@
                         <input type="number" id="est-n-floors-below" value="0" min="0" max="10">
                     </div>
                     <div class="form-group">
-                        <label for="est-floor-height">Floor-to-floor height (m)</label>
-                        <input type="number" id="est-floor-height" value="3.5" step="0.1" min="2.5" max="6">
+                        <label for="est-floor-height">Floor-to-floor height (ft)</label>
+                        <input type="number" id="est-floor-height" value="11.5" step="0.5" min="8" max="20">
                     </div>
                     <div class="form-group">
-                        <label for="est-bldg-perimeter">Building perimeter (m)</label>
-                        <input type="number" id="est-bldg-perimeter" value="120" min="20" max="600">
+                        <label for="est-bldg-perimeter">Building perimeter (ft)</label>
+                        <input type="number" id="est-bldg-perimeter" value="400" min="60" max="2000">
                     </div>
                     <div class="form-group">
-                        <label for="est-floor-area">Floor area (m&sup2;)</label>
-                        <input type="number" id="est-floor-area" value="1000" min="100" max="10000">
+                        <label for="est-floor-area">Floor area (sq ft)</label>
+                        <input type="number" id="est-floor-area" value="10000" min="1000" max="100000">
                     </div>
                     <div class="form-group">
                         <label for="est-wall-construction">Wall construction</label>
@@ -121,17 +124,17 @@
                     <div class="form-group">
                         <label for="est-leak-stair-door">Stair doors</label>
                         <select id="est-leak-stair-door">
-                            <option value="tight">Tight (0.01 m&sup2;)</option>
-                            <option value="average" selected>Average (0.02 m&sup2;)</option>
-                            <option value="loose">Loose (0.04 m&sup2;)</option>
+                            <option value="tight">Tight (0.11 sq ft)</option>
+                            <option value="average" selected>Average (0.22 sq ft)</option>
+                            <option value="loose">Loose (0.43 sq ft)</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="est-leak-elev-door">Elevator doors</label>
                         <select id="est-leak-elev-door">
-                            <option value="tight">Tight (0.02 m&sup2;)</option>
-                            <option value="average" selected>Average (0.06 m&sup2;)</option>
-                            <option value="loose">Loose (0.11 m&sup2;)</option>
+                            <option value="tight">Tight (0.22 sq ft)</option>
+                            <option value="average" selected>Average (0.65 sq ft)</option>
+                            <option value="loose">Loose (1.18 sq ft)</option>
                         </select>
                     </div>
                 </div>
@@ -156,8 +159,8 @@
                         <input type="number" id="est-elev-n" value="2" min="0" max="30">
                     </div>
                     <div class="form-group">
-                        <label for="est-elev-area">Shaft area (m&sup2;)</label>
-                        <input type="number" id="est-elev-area" value="6" step="0.5" min="2" max="50">
+                        <label for="est-elev-area">Shaft area (sq ft)</label>
+                        <input type="number" id="est-elev-area" value="65" step="5" min="20" max="500">
                     </div>
                     <div class="form-group">
                         <label for="est-elev-door-type">Door type</label>
@@ -168,8 +171,8 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="est-elev-vent">Vent area at top (m&sup2;)</label>
-                        <input type="number" id="est-elev-vent" value="0" step="0.05" min="0" max="1">
+                        <label for="est-elev-vent">Vent area at top (sq ft)</label>
+                        <input type="number" id="est-elev-vent" value="0" step="0.5" min="0" max="10">
                     </div>
                 </div>
 
@@ -184,24 +187,24 @@
                 <h2>Design Conditions</h2>
                 <div class="form-grid">
                     <div class="form-group">
-                        <label for="est-t-winter">Outdoor winter temp (&deg;C)</label>
-                        <input type="number" id="est-t-winter" value="-18" step="1" min="-40" max="10">
+                        <label for="est-t-winter">Outdoor winter temp (&deg;F)</label>
+                        <input type="number" id="est-t-winter" value="0" step="1" min="-40" max="50">
                     </div>
                     <div class="form-group">
-                        <label for="est-t-summer">Outdoor summer temp (&deg;C)</label>
-                        <input type="number" id="est-t-summer" value="35" step="1" min="25" max="45">
+                        <label for="est-t-summer">Outdoor summer temp (&deg;F)</label>
+                        <input type="number" id="est-t-summer" value="95" step="1" min="75" max="115">
                     </div>
                     <div class="form-group">
-                        <label for="est-t-indoor">Indoor temp (&deg;C)</label>
-                        <input type="number" id="est-t-indoor" value="22" step="0.5" min="18" max="26">
+                        <label for="est-t-indoor">Indoor temp (&deg;F)</label>
+                        <input type="number" id="est-t-indoor" value="72" step="1" min="65" max="80">
                     </div>
                     <div class="form-group">
-                        <label for="est-t-fire">Fire floor gas temp (&deg;C)</label>
-                        <input type="number" id="est-t-fire" value="300" step="50" min="100" max="900">
+                        <label for="est-t-fire">Fire floor gas temp (&deg;F)</label>
+                        <input type="number" id="est-t-fire" value="572" step="50" min="200" max="1650">
                     </div>
                     <div class="form-group">
-                        <label for="est-wind-speed">Wind speed (m/s)</label>
-                        <input type="number" id="est-wind-speed" value="12" step="1" min="0" max="40">
+                        <label for="est-wind-speed">Wind speed (mph)</label>
+                        <input type="number" id="est-wind-speed" value="27" step="1" min="0" max="90">
                     </div>
                     <div class="form-group">
                         <label for="est-wind-dir">Wind direction (&deg;)</label>
@@ -242,28 +245,28 @@
                 <h3>Design Criteria</h3>
                 <div class="form-grid">
                     <div class="form-group">
-                        <label for="est-min-dp">Min &Delta;P closed door (Pa)</label>
-                        <input type="number" id="est-min-dp" value="12.5" step="0.5" min="5" max="50">
+                        <label for="est-min-dp">Min &Delta;P closed door (in. w.g.)</label>
+                        <input type="number" id="est-min-dp" value="0.05" step="0.005" min="0.02" max="0.20">
                     </div>
                     <div class="form-group">
-                        <label for="est-max-dp">Max &Delta;P closed door (Pa)</label>
-                        <input type="number" id="est-max-dp" value="87" step="1" min="30" max="120">
+                        <label for="est-max-dp">Max &Delta;P closed door (in. w.g.)</label>
+                        <input type="number" id="est-max-dp" value="0.35" step="0.01" min="0.12" max="0.50">
                     </div>
                     <div class="form-group">
-                        <label for="est-max-force">Max door force (N)</label>
-                        <input type="number" id="est-max-force" value="133" step="1" min="80" max="200">
+                        <label for="est-max-force">Max door force (lbf)</label>
+                        <input type="number" id="est-max-force" value="30" step="1" min="18" max="45">
                     </div>
                     <div class="form-group">
-                        <label for="est-exhaust-dp">Floor exhaust &Delta;P (Pa) <small style="color:#888;">[0.08 in. w.g.]</small></label>
-                        <input type="number" id="est-exhaust-dp" value="19.92" step="0.5" min="5" max="75">
+                        <label for="est-exhaust-dp">Floor exhaust &Delta;P (in. w.g.)</label>
+                        <input type="number" id="est-exhaust-dp" value="0.08" step="0.01" min="0.02" max="0.30">
                     </div>
                     <div class="form-group">
-                        <label for="est-closer-force">Door closer force (N)</label>
-                        <input type="number" id="est-closer-force" value="55" step="5" min="20" max="100">
+                        <label for="est-closer-force">Door closer force (lbf)</label>
+                        <input type="number" id="est-closer-force" value="12" step="1" min="5" max="25">
                     </div>
                     <div class="form-group">
-                        <label for="est-min-velocity">Min door velocity (m/s)</label>
-                        <input type="number" id="est-min-velocity" value="1.0" step="0.1" min="0.5" max="3">
+                        <label for="est-min-velocity">Min door velocity (fpm)</label>
+                        <input type="number" id="est-min-velocity" value="200" step="10" min="100" max="600">
                     </div>
                 </div>
 
@@ -335,6 +338,6 @@
         </main>
     </div>
 
-    <script src="/static/js/estimation.js?v=9"></script>
+    <script src="/static/js/estimation.js?v=10"></script>
 </body>
 </html>

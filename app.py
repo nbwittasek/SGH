@@ -285,6 +285,44 @@ async def parse_model(request: Request):
     }
 
 
+@app.post("/api/model/parse-upload")
+async def parse_model_upload(file: UploadFile = File(...)):
+    """Accept a drag-and-dropped PRJ file, save it, and parse it."""
+    if not file.filename or not file.filename.lower().endswith(".prj"):
+        raise HTTPException(400, "Please upload a .prj file")
+
+    projects_dir = BASE_DIR / "Projects"
+    projects_dir.mkdir(exist_ok=True)
+    dest = projects_dir / file.filename
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    try:
+        model = parse_prj_file(str(dest))
+    except Exception as e:
+        raise HTTPException(422, f"Failed to parse PRJ file: {e}")
+
+    model_id = str(uuid.uuid4())[:8]
+    parsed_models[model_id] = model
+
+    if current_project:
+        base_models = current_project.setdefault("base_models", {})
+        base_models[dest.stem] = str(dest)
+
+    return {
+        "model_id": model_id,
+        "filepath": str(dest),
+        "version": model.version,
+        "project_name": model.project_name,
+        "num_levels": len(model.levels),
+        "num_zones": len(model.zones),
+        "num_flow_elements": len(model.flow_elements),
+        "num_airflow_paths": len(model.airflow_paths),
+        "num_ahs": len(model.ahs_systems),
+    }
+
+
 @app.get("/api/model/{model_id}/levels")
 async def get_levels(model_id: str):
     model = parsed_models.get(model_id)
